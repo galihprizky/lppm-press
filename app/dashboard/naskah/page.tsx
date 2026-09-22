@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ApiListResponse, Naskah } from "@/app/dashboard/naskah/types";
+import { API_URL } from "@/lib/config";
 
 const PAGE_SIZE = 5;
 
@@ -19,7 +20,7 @@ export default function NaskahPage() {
     setLoading(true);
     setServerError("");
     try {
-      const res = await fetch(`http://localhost:3001/naskah/pengusul/${pengusulId}`);
+      const res = await fetch(`${API_URL}/naskah/pengusul/${pengusulId}`);
       const json: ApiListResponse<Naskah> = await res.json();
       setItems(Array.isArray(json?.data) ? json.data : []);
     } catch {
@@ -62,7 +63,7 @@ export default function NaskahPage() {
   const handleDelete = async () => {
     if (!deleteModal) return;
     try {
-      const res = await fetch(`http://localhost:3001/naskah/${deleteModal.id}`, {
+      const res = await fetch(`${API_URL}/naskah/${deleteModal.id}`, {
         method: "DELETE",
       });
 

@@ -3,11 +3,18 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { API_URL } from "@/lib/config";
 // import { useApp } from "@/context/AppContext";
 
 interface LoginForm {
   email: string;
   password: string;
+}
+
+interface UserRole {
+  id: number;
+  nama_role: string;
+  deskripsi: string;
 }
 
 type FormErrors = Partial<Record<keyof LoginForm, string>>;
@@ -43,7 +50,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3001/auth/login", {
+      const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -74,6 +81,7 @@ export default function LoginPage() {
         id?: string | number;
         name?: string;
         nama?: string;
+        roles?: UserRole[];
       } = await res.json();
 
       localStorage.setItem("access_token", data.access_token);
@@ -87,6 +95,11 @@ export default function LoginPage() {
         localStorage.setItem("user_id", String(data.id));
       }
       localStorage.setItem("user_name", data.name ?? data.nama ?? "");
+      localStorage.setItem("user_roles", JSON.stringify(data.roles ?? []));
+      localStorage.setItem(
+        "user_role_names",
+        JSON.stringify((data.roles ?? []).map((role) => role.nama_role))
+      );
       localStorage.setItem("user_email", form.email);
 
       router.push("/dashboard");
@@ -112,19 +125,19 @@ export default function LoginPage() {
                 <path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" />
               </svg>
             </div>
-            <span className="font-semibold text-lg tracking-tight">SiMahasiswa</span>
+            <span className="font-semibold text-lg tracking-tight">LPPM PRESS</span>
           </div>
         </div>
 
         <div className="animate-fade-in">
           <h1 className="text-4xl font-bold leading-tight mb-5">
-            Sistem Manajemen<br />Data Mahasiswa
+            Website Penerbit<br />LPPM
           </h1>
           <p style={{ color: "rgba(255,255,255,0.7)", lineHeight: "1.7" }}>
-            Platform terpadu untuk mengelola informasi akademik mahasiswa secara efisien dan terstruktur.
+            Platform terpadu untuk mengelola data dan naskah penerbitan secara efisien dan terstruktur.
           </p>
           <div className="mt-12 space-y-4">
-            {["Manajemen data CRUD mahasiswa", "Pencarian & paginasi real-time", "Antarmuka responsif & modern"].map((text) => (
+            {["Penerbitan Naskah Buku", "Cek dan update status naskah", "Repository buku anda"].map((text) => (
               <div key={text} className="flex items-center gap-3">
                 <span style={{ color: "var(--color-accent)" }}>✦</span>
                 <span style={{ color: "rgba(255,255,255,0.85)", fontSize: "0.9rem" }}>{text}</span>
@@ -134,7 +147,7 @@ export default function LoginPage() {
         </div>
 
         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.78rem" }}>
-          © 2026 SiMahasiswa. All rights reserved.
+          © 2026 LPPM PRESS. All rights reserved.
         </div>
       </div>
 
@@ -148,12 +161,12 @@ export default function LoginPage() {
                 <path d="M12 14l9-5-9-5-9 5 9 5z" />
               </svg>
             </div>
-            <span className="font-semibold" style={{ color: "var(--color-primary)" }}>SiMahasiswa</span>
+            <span className="font-semibold" style={{ color: "var(--color-primary)" }}>LPPM PRESS</span>
           </div>
 
           <h2 className="text-2xl font-bold mb-1">Selamat datang kembali</h2>
           <p className="mb-8 text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Masuk untuk mengakses sistem manajemen mahasiswa
+            Masuk untuk mengakses Website Penerbit LPPM
           </p>
 
           {serverError && (

@@ -8,7 +8,7 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-import { dummyUsers, dummyMahasiswa, User, Mahasiswa } from "@/data/dummy";
+import { dummyUsers, User } from "@/data/dummy";
 
 interface ActionResult {
   success: boolean;
@@ -23,11 +23,6 @@ interface AppContextType {
   logout: () => void;
   updateProfile: (data: Partial<User>) => ActionResult;
   setAuthenticatedUser: (user: User | null) => void;
-  mahasiswa: Mahasiswa[];
-  getMahasiswaById: (id: string | number) => Mahasiswa | undefined;
-  addMahasiswa: (data: Omit<Mahasiswa, "id" | "created_at" | "updated_at">) => ActionResult;
-  updateMahasiswa: (id: string | number, data: Omit<Mahasiswa, "id" | "created_at" | "updated_at">) => ActionResult;
-  deleteMahasiswa: (id: string | number) => ActionResult;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -35,13 +30,11 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>(dummyUsers);
-  const [mahasiswa, setMahasiswa] = useState<Mahasiswa[]>(dummyMahasiswa);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     try {
       const savedUser = localStorage.getItem("currentUser");
-      const savedMahasiswa = localStorage.getItem("mahasiswa");
       const savedUsers = localStorage.getItem("users"); 
 
       if (savedUser) {
@@ -49,17 +42,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setCurrentUser(JSON.parse(savedUser));
         }, 0);
       }
-      if (savedMahasiswa) setMahasiswa(JSON.parse(savedMahasiswa));
       if (savedUsers) setUsers(JSON.parse(savedUsers));
     } catch {
       // ignore parse errors
     }
     setIsLoading(false);
   }, []);
-
-  useEffect(() => {
-    if (!isLoading) localStorage.setItem("mahasiswa", JSON.stringify(mahasiswa));
-  }, [mahasiswa, isLoading]);
 
   useEffect(() => {
     if (!isLoading) localStorage.setItem("users", JSON.stringify(users));
@@ -117,59 +105,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // MAHASISWA CRUD
-  const getMahasiswaById = (id: string | number): Mahasiswa | undefined =>
-    mahasiswa.find((m) => m.id === Number(id));
-
-  const addMahasiswa = (
-    data: Omit<Mahasiswa, "id" | "created_at" | "updated_at">
-  ): ActionResult => {
-    if (mahasiswa.find((m) => m.nim === data.nim)) {
-      return { success: false, message: "NIM sudah terdaftar." };
-    }
-    if (mahasiswa.find((m) => m.email === data.email)) {
-      return { success: false, message: "Email mahasiswa sudah terdaftar." };
-    }
-    const now = new Date().toISOString();
-    const newMhs: Mahasiswa = {
-      id: Math.max(0, ...mahasiswa.map((m) => m.id)) + 1,
-      ...data,
-      created_at: now,
-      updated_at: now,
-    };
-    setMahasiswa((prev) => [...prev, newMhs]);
-    return { success: true };
-  };
-
-  const updateMahasiswa = (
-    id: string | number,
-    data: Omit<Mahasiswa, "id" | "created_at" | "updated_at">
-  ): ActionResult => {
-    const existing = mahasiswa.find((m) => m.id === Number(id));
-    if (!existing) return { success: false, message: "Mahasiswa tidak ditemukan." };
-
-    if (mahasiswa.find((m) => m.nim === data.nim && m.id !== Number(id))) {
-      return { success: false, message: "NIM sudah digunakan mahasiswa lain." };
-    }
-    if (mahasiswa.find((m) => m.email === data.email && m.id !== Number(id))) {
-      return { success: false, message: "Email sudah digunakan mahasiswa lain." };
-    }
-
-    setMahasiswa((prev) =>
-      prev.map((m) =>
-        m.id === Number(id)
-          ? { ...m, ...data, updated_at: new Date().toISOString() }
-          : m
-      )
-    );
-    return { success: true };
-  };
-
-  const deleteMahasiswa = (id: string | number): ActionResult => {
-    setMahasiswa((prev) => prev.filter((m) => m.id !== Number(id)));
-    return { success: true };
-  };
-
   return (
     <AppContext.Provider
       value={{
@@ -180,11 +115,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         logout,
         updateProfile,
         setAuthenticatedUser,
-        mahasiswa,
-        getMahasiswaById,
-        addMahasiswa,
-        updateMahasiswa,
-        deleteMahasiswa,
       }}
     >
       {children}

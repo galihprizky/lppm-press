@@ -23,6 +23,9 @@ export interface NaskahForm {
   pake_editor_pribadi: boolean;
   status_cover: string;
   status_saat_ini: string;
+  file_draft_naskah?: File | null;
+  file_profile_penulis?: File | null;
+  file_surat_keaslian?: File | null;
 }
 
 export interface ApiListResponse<T> {

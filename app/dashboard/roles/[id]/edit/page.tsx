@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApiResponse, EMPTY_ROLE_FORM, Role, RoleForm } from "../../types";
 
-const API_URL = "http://localhost:3001/roles";
+import { API_URL as BASE_API_URL } from "@/lib/config";
+const API_URL = `${BASE_API_URL}/roles`;
 type FormErrors = Partial<Record<keyof RoleForm, string>>;
 export default function EditRolePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params); const router = useRouter();

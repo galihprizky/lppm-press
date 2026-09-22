@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ApiResponse, User } from "./types";
 
-const API_URL = "http://localhost:3001/users";
+import { API_URL as BASE_API_URL } from "@/lib/config";
+const API_URL = `${BASE_API_URL}/users`;
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);

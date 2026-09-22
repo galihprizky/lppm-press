@@ -10,6 +10,7 @@ import {
   TARGET_PEMBACA_OPTIONS,
   WARNA_ISI_OPTIONS,
 } from "@/app/dashboard/naskah/types";
+import { API_URL } from "@/lib/config";
 
 type FormErrors = Partial<Record<keyof NaskahForm, string>>;
 
@@ -24,6 +25,9 @@ const INITIAL_FORM: NaskahForm = {
   pake_editor_pribadi: false,
   status_cover: "",
   status_saat_ini: "",
+  file_draft_naskah: null,
+  file_profile_penulis: null,
+  file_surat_keaslian: null,
 };
 
 export default function TambahNaskahPage() {
@@ -42,6 +46,9 @@ export default function TambahNaskahPage() {
     if (!form.nama_semua_penulis.trim()) e.nama_semua_penulis = "Nama penulis wajib diisi.";
     if (!form.warna_isi_buku) e.warna_isi_buku = "Warna isi buku wajib dipilih.";
     if (!form.status_cover) e.status_cover = "Status cover wajib dipilih.";
+    if (!form.file_draft_naskah) e.file_draft_naskah = "File draft naskah wajib diunggah.";
+    if (!form.file_profile_penulis) e.file_profile_penulis = "File profil penulis wajib diunggah.";
+    if (!form.file_surat_keaslian) e.file_surat_keaslian = "File surat keaslian wajib diunggah.";
     return e;
   };
 
@@ -59,16 +66,27 @@ export default function TambahNaskahPage() {
 
     try {
       const userId = localStorage.getItem("user_id") ?? "";
-      const res = await fetch("http://localhost:3001/naskah", {
+      const { file_draft_naskah, file_profile_penulis, file_surat_keaslian, ...rest } = form;
+
+      const formData = new FormData();
+      Object.entries({
+        ...rest,
+        pengusul_id: userId,
+        status_saat_ini: "SUBMITTED",
+      }).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          value.forEach((item) => formData.append(`${key}[]`, item));
+        } else {
+          formData.append(key, String(value));
+        }
+      });
+      if (file_draft_naskah) formData.append("file_draft_naskah", file_draft_naskah);
+      if (file_profile_penulis) formData.append("file_profile_penulis", file_profile_penulis);
+      if (file_surat_keaslian) formData.append("file_surat_keaslian", file_surat_keaslian);
+
+      const res = await fetch(`${API_URL}/naskah`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...form,
-          pengusul_id: userId,
-          status_saat_ini: "SUBMITTED",
-        }),
+        body: formData,
       });
 
       if (!res.ok) {
@@ -103,6 +121,11 @@ export default function TambahNaskahPage() {
       ? form.target_pembaca.filter((x) => x !== target)
       : [...form.target_pembaca, target];
     update("target_pembaca", next);
+  };
+
+  const handleFile = (key: "file_draft_naskah" | "file_profile_penulis" | "file_surat_keaslian", file: File | null) => {
+    setForm((prev) => ({ ...prev, [key]: file }));
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: "" }));
   };
 
   return (
@@ -241,6 +264,38 @@ export default function TambahNaskahPage() {
                   <span>Ya, pakai editor pribadi</span>
                 </label>
               </div>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-5">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">File Draft Naskah</label>
+              <input
+                type="file"
+                className={`input-base ${errors.file_draft_naskah ? "error" : ""}`}
+                onChange={(e) => handleFile("file_draft_naskah", e.target.files?.[0] ?? null)}
+              />
+              {errors.file_draft_naskah && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_draft_naskah}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5">File Profil Penulis</label>
+              <input
+                type="file"
+                className={`input-base ${errors.file_profile_penulis ? "error" : ""}`}
+                onChange={(e) => handleFile("file_profile_penulis", e.target.files?.[0] ?? null)}
+              />
+              {errors.file_profile_penulis && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_profile_penulis}</p>}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1.5">File Surat Keaslian</label>
+              <input
+                type="file"
+                className={`input-base ${errors.file_surat_keaslian ? "error" : ""}`}
+                onChange={(e) => handleFile("file_surat_keaslian", e.target.files?.[0] ?? null)}
+              />
+              {errors.file_surat_keaslian && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_surat_keaslian}</p>}
             </div>
           </div>
 

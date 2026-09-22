@@ -17,8 +17,8 @@ const dmMono = DM_Mono({
 });
 
 export const metadata = {
-  title: "Sistem Manajemen Mahasiswa",
-  description: "Kelola data mahasiswa dengan mudah dan efisien",
+  title: "LPPM PRESS | Website Penerbit LPPM",
+  description: "Website Penerbit LPPM untuk mengelola data dan naskah secara efisien",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

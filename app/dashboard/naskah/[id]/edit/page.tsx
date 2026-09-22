@@ -12,6 +12,7 @@ import {
   TARGET_PEMBACA_OPTIONS,
   WARNA_ISI_OPTIONS,
 } from "@/app/dashboard/naskah/types";
+import { API_URL } from "@/lib/config";
 
 type FormErrors = Partial<Record<keyof NaskahForm, string>>;
 
@@ -44,7 +45,7 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
       setFetching(true);
       setServerError("");
       try {
-        const res = await fetch("http://localhost:3001/naskah");
+        const res = await fetch(`${API_URL}/naskah`);
         const json: ApiListResponse<Naskah> = await res.json();
         const list = Array.isArray(json?.data) ? json.data : [];
         const found = list.find((x) => String(x.id) === id);
@@ -103,7 +104,7 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
 
     try {
       const { pengusul_id, status_saat_ini, ...payload } = form;
-      const res = await fetch(`http://localhost:3001/naskah/${id}`, {
+      const res = await fetch(`${API_URL}/naskah/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

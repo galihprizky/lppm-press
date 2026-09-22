@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { API_URL } from "@/lib/config";
 
 interface Fakultas {
   id: number;
@@ -59,7 +60,7 @@ export default function RegisterPage() {
     const fetchFakultas = async () => {
       setLoadingFakultas(true);
       try {
-        const res = await fetch("http://localhost:3001/fakultas");
+        const res = await fetch(`${API_URL}/fakultas`);
         const json = await res.json();
         setFakultasList(Array.isArray(json?.data) ? json.data : []);
       } catch {
@@ -81,7 +82,7 @@ export default function RegisterPage() {
 
       setLoadingJurusan(true);
       try {
-        const res = await fetch(`http://localhost:3001/jurusan/fakultas/${form.fakultas_id}`);
+        const res = await fetch(`${API_URL}/jurusan/fakultas/${form.fakultas_id}`);
         const json = await res.json();
         setJurusanList(Array.isArray(json?.data) ? json.data : []);
       } catch {
@@ -126,7 +127,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:3001/users", {
+      const res = await fetch(`${API_URL}/users`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -177,7 +178,7 @@ export default function RegisterPage() {
               <path d="M12 14l9-5-9-5-9 5 9 5z" />
             </svg>
           </div>
-          <span className="font-semibold" style={{ color: "var(--color-primary)" }}>SiMahasiswa</span>
+          <span className="font-semibold" style={{ color: "var(--color-primary)" }}>LPPM PRESS</span>
         </div>
 
         <div className="rounded-2xl border p-5 sm:p-6 mb-5 sm:mb-6" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>

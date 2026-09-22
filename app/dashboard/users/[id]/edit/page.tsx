@@ -7,7 +7,8 @@ import UserForm from "../../UserForm";
 import { EMPTY_USER_FORM } from "../../types";
 import type { ApiResponse, User, UserForm as UserFormData } from "../../types";
 
-const API_URL = "http://localhost:3001/users";
+import { API_URL as BASE_API_URL } from "@/lib/config";
+const API_URL = `${BASE_API_URL}/users`;
 
 export default function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);

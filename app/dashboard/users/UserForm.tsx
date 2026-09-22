@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import type { Fakultas, Jurusan, UserForm as UserFormData, UserRole } from "./types";
+import { API_URL } from "@/lib/config";
 
 interface UserFormProps {
   initialForm: UserFormData;
@@ -24,8 +25,8 @@ export default function UserForm({ initialForm, isEdit = false, loading = false,
 
   useEffect(() => {
     Promise.all([
-      fetch("http://localhost:3001/fakultas").then((response) => response.json()),
-      fetch("http://localhost:3001/roles").then((response) => response.json()),
+      fetch(`${API_URL}/fakultas`).then((response) => response.json()),
+      fetch(`${API_URL}/roles`).then((response) => response.json()),
     ]).then(([fakultas, roles]) => {
       setFakultasList(Array.isArray(fakultas?.data) ? fakultas.data : []);
       setRoleList(Array.isArray(roles?.data) ? roles.data : []);
@@ -41,7 +42,7 @@ export default function UserForm({ initialForm, isEdit = false, loading = false,
       return;
     }
     setLoadingJurusan(true);
-    fetch(`http://localhost:3001/jurusan/fakultas/${form.fakultas_id}`)
+    fetch(`${API_URL}/jurusan/fakultas/${form.fakultas_id}`)
       .then((response) => response.json())
       .then((json) => setJurusanList(Array.isArray(json?.data) ? json.data : []))
       .catch(() => setJurusanList([]))

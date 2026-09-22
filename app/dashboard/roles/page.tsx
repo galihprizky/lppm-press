@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ApiResponse, Role } from "./types";
 
-const API_URL = "http://localhost:3001/roles";
+import { API_URL as BASE_API_URL } from "@/lib/config";
+const API_URL = `${BASE_API_URL}/roles`;
 
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);

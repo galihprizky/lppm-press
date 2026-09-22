@@ -1,15 +1,9 @@
 "use client";
 // src/app/dashboard/page.tsx
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useApp } from "@/context/AppContext";
-import { Mahasiswa } from "@/data/dummy";
-
-const JURUSAN_COLORS: Record<string, string> = {
-  Informatika: "badge-informatika",
-  "Sistem Informasi": "badge-si",
-  "Teknik Elektro": "badge-te",
-  Manajemen: "badge-manajemen",
-};
+import { ApiListResponse, Naskah } from "@/app/dashboard/naskah/types";
+import { API_URL } from "@/lib/config";
 
 interface StatCard {
   label: string;
@@ -19,23 +13,36 @@ interface StatCard {
 }
 
 export default function DashboardPage() {
-  const { currentUser, mahasiswa } = useApp();
+  const [naskah, setNaskah] = useState<Naskah[]>([]);
 
-  const jurusanCount = mahasiswa.reduce<Record<string, number>>((acc, m) => {
-    acc[m.jurusan] = (acc[m.jurusan] ?? 0) + 1;
-    return acc;
-  }, {});
+  useEffect(() => {
+    const fetchNaskah = async () => {
+      try {
+        const response = await fetch(`${API_URL}/naskah`);
+        const json: ApiListResponse<Naskah> = await response.json();
+        setNaskah(Array.isArray(json.data) ? json.data : []);
+      } catch {
+        setNaskah([]);
+      }
+    };
 
-  const recentMhs: Mahasiswa[] = [...mahasiswa]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    fetchNaskah();
+  }, []);
+
+  const recentNaskah = [...naskah]
+    .sort((a, b) => b.id - a.id)
     .slice(0, 5);
 
+  const statusCount = (status: string) =>
+    naskah.filter((item) => item.status_saat_ini === status).length;
+
   const stats: StatCard[] = [
-    { label: "Total Mahasiswa", value: mahasiswa.length, color: "var(--color-primary)", bg: "var(--color-primary-pale)" },
-    { label: "Informatika", value: jurusanCount["Informatika"] ?? 0, color: "#1565c0", bg: "#e8f4fd" },
-    { label: "Sistem Informasi", value: jurusanCount["Sistem Informasi"] ?? 0, color: "#b7770d", bg: "#fef9e7" },
-    { label: "Teknik Elektro", value: jurusanCount["Teknik Elektro"] ?? 0, color: "#8e44ad", bg: "#fdf2f8" },
-    { label: "Manajemen", value: jurusanCount["Manajemen"] ?? 0, color: "#1e8449", bg: "#eafaf1" },
+    { label: "Total Naskah", value: naskah.length, color: "var(--color-primary)", bg: "var(--color-primary-pale)" },
+    { label: "Submitted", value: statusCount("SUBMITTED"), color: "#1565c0", bg: "#e8f4fd" },
+    { label: "Under Review", value: statusCount("UNDER_REVIEW"), color: "#b7770d", bg: "#fef9e7" },
+    { label: "Revision Required", value: statusCount("REVISION_REQUIRED"), color: "#8e44ad", bg: "#fdf2f8" },
+    { label: "Published", value: statusCount("PUBLISHED"), color: "#1e8449", bg: "#eafaf1" },
+    { label: "Rejected", value: statusCount("REJECTED"), color: "var(--color-danger)", bg: "var(--color-danger-pale)" },
   ];
 
   return (
@@ -45,12 +52,12 @@ export default function DashboardPage() {
           Selamat datang, 👋
         </h1>
         <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Ini ringkasan data mahasiswa hari ini.
+          Ini ringkasan pengajuan naskah hari ini.
         </p>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
         {stats.map((s) => (
           <div key={s.label} className="card p-4">
             <div className="text-3xl font-bold mb-1" style={{ color: s.color }}>{s.value}</div>
@@ -66,17 +73,17 @@ export default function DashboardPage() {
             Aksi Cepat
           </h2>
           <div className="space-y-3">
-            <Link href="/dashboard/mahasiswa/tambah" className="btn-primary w-full justify-center">
+            <Link href="/dashboard/naskah/tambah" className="btn-primary w-full justify-center">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              Tambah Mahasiswa
+              Tambah Naskah
             </Link>
-            <Link href="/dashboard/mahasiswa" className="btn-secondary w-full justify-center">
+            <Link href="/dashboard/naskah" className="btn-secondary w-full justify-center">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" />
+                <path d="M4 4h16v16H4z" /><path d="M8 8h8M8 12h8M8 16h5" />
               </svg>
-              Lihat Semua Mahasiswa
+              Lihat Semua Naskah
             </Link>
             <Link href="/dashboard/profil" className="btn-secondary w-full justify-center">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -87,36 +94,27 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent mahasiswa */}
+        {/* Recent naskah */}
         <div className="card p-5 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
-              Mahasiswa Terbaru
+              Naskah Terbaru
             </h2>
-            <Link href="/dashboard/mahasiswa" className="text-xs font-medium" style={{ color: "var(--color-primary)" }}>
+            <Link href="/dashboard/naskah" className="text-xs font-medium" style={{ color: "var(--color-primary)" }}>
               Lihat semua →
             </Link>
           </div>
           <div className="space-y-3">
-            {recentMhs.map((m) => (
-              <div key={m.id} className="flex items-center justify-between py-2 border-b last:border-0"
+            {recentNaskah.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-4 py-2 border-b last:border-0"
                 style={{ borderColor: "var(--color-border)" }}>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                    style={{ background: "var(--color-primary-light)" }}>
-                    {m.nama.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium">{m.nama}</div>
-                    <div className="text-xs font-mono" style={{ color: "var(--color-text-muted)" }}>{m.nim}</div>
-                  </div>
-                </div>
-                <span className={`badge ${JURUSAN_COLORS[m.jurusan] ?? ""}`}>{m.jurusan}</span>
+                <div className="text-sm font-medium truncate">{item.judul_naskah}</div>
+                <span className="badge flex-shrink-0">{item.status_saat_ini || "-"}</span>
               </div>
             ))}
-            {recentMhs.length === 0 && (
+            {recentNaskah.length === 0 && (
               <p className="text-sm text-center py-4" style={{ color: "var(--color-text-muted)" }}>
-                Belum ada data mahasiswa.
+                Belum ada data naskah.
               </p>
             )}
           </div>
