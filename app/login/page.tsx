@@ -4,6 +4,7 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_URL } from "@/lib/config";
+import { ACTIVE_ROLE_STORAGE_KEY } from "@/lib/storage";
 // import { useApp } from "@/context/AppContext";
 
 interface LoginForm {
@@ -81,6 +82,7 @@ export default function LoginPage() {
         id?: string | number;
         name?: string;
         nama?: string;
+            user_role_name?: string[];
         roles?: UserRole[];
       } = await res.json();
 
@@ -96,10 +98,13 @@ export default function LoginPage() {
       }
       localStorage.setItem("user_name", data.name ?? data.nama ?? "");
       localStorage.setItem("user_roles", JSON.stringify(data.roles ?? []));
+      const roleNames = data.user_role_name ?? (data.roles ?? []).map((role) => role.nama_role);
       localStorage.setItem(
         "user_role_names",
-        JSON.stringify((data.roles ?? []).map((role) => role.nama_role))
+        JSON.stringify(roleNames)
       );
+      localStorage.setItem("user_role_name", JSON.stringify(roleNames));
+      localStorage.setItem(ACTIVE_ROLE_STORAGE_KEY, roleNames[0] ?? "");
       localStorage.setItem("user_email", form.email);
 
       router.push("/dashboard");

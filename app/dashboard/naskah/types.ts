@@ -35,6 +35,10 @@ export interface ApiListResponse<T> {
 }
 
 export const TARGET_PEMBACA_OPTIONS = ["Mahasiswa", "Dosen", "Umum"] as const;
+
+export function toApiTargetPembaca(target: string): string {
+  return target === "Dosen" ? "Akademisi" : target;
+}
 export const JENIS_BUKU_OPTIONS = [
   "Buku Referensi",
   "Buku Ajar",
@@ -44,3 +48,14 @@ export const JENIS_BUKU_OPTIONS = [
 export const WARNA_ISI_OPTIONS = ["Hitam Putih", "Berwarna"] as const;
 export const STATUS_COVER_OPTIONS = ["Sudah", "Belum"] as const;
 export const STATUS_SAAT_INI_OPTIONS = ["SUBMITTED", "REVIEW", "REVISI", "APPROVED"] as const;
+
+export const EDITABLE_NASKAH_STATUSES = ["SUBMITTED", "REVISI"] as const;
+
+export function canEditNaskah(status: string | null | undefined): boolean {
+  return EDITABLE_NASKAH_STATUSES.includes(status as (typeof EDITABLE_NASKAH_STATUSES)[number]);
+}
+
+export function canManageNaskah(role: string | null | undefined): boolean {
+  const normalizedRole = role?.trim().toUpperCase();
+  return normalizedRole === "LPPM" || normalizedRole === "AUTHOR";
+}

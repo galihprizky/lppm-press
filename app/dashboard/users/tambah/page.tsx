@@ -19,9 +19,22 @@ export default function TambahUserPage() {
     setLoading(true);
     setServerError("");
     try {
-      const response = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, jurusan_id: Number(form.jurusan_id) }) });
+      const payload = {
+        nip: form.nip.trim(),
+        nama: form.nama.trim(),
+        email: form.email.trim(),
+        no_hp: form.no_hp.trim(),
+        jurusan_id: Number(form.jurusan_id),
+        role_ids: form.role_ids,
+        password: form.password,
+        is_active: form.is_active,
+      };
+      const response = await fetch(API_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const json: ApiResponse<unknown> = await response.json();
-      if (!response.ok) throw new Error(json.message || "Gagal menambahkan user.");
+      if (!response.ok) {
+        const message = Array.isArray(json.message) ? json.message.join(" ") : json.message;
+        throw new Error(message || "Gagal menambahkan user.");
+      }
       router.push("/dashboard/users");
     } catch (error) {
       setServerError(error instanceof Error ? error.message : "Tidak bisa terhubung ke server.");

@@ -3,9 +3,10 @@
 import { FormEvent, use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ApiListResponse, Naskah } from "@/app/dashboard/naskah/types";
+import { ApiListResponse, canEditNaskah, canManageNaskah, Naskah } from "@/app/dashboard/naskah/types";
 import { ApiResponse, User } from "@/app/dashboard/users/types";
 import { API_URL } from "@/lib/config";
+import { getActiveRole } from "@/lib/storage";
 
 interface ReviewerAssignment {
   id: number;
@@ -60,6 +61,8 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [assignmentError, setAssignmentError] = useState("");
   const [assignmentSuccess, setAssignmentSuccess] = useState("");
   const [reviewerAssignment, setReviewerAssignment] = useState<ReviewerAssignment | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -76,6 +79,12 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
         }
 
         setNaskah(found);
+        const userId = localStorage.getItem("user_id");
+        const activeRole = getActiveRole();
+        const isLppm = activeRole?.trim().toUpperCase() === "LPPM";
+        const isOwner = String(found?.pengusul_id) === userId;
+        setCanEdit(canManageNaskah(activeRole) && (isLppm || isOwner) && canEditNaskah(found?.status_saat_ini));
+        setCanDelete(canManageNaskah(activeRole) && (isLppm || isOwner));
       } catch {
         setServerError("Tidak bisa memuat detail naskah.");
       } finally {
@@ -143,6 +152,11 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
     event.preventDefault();
     setAssignmentError("");
     setAssignmentSuccess("");
+
+    if (!naskah) {
+      setAssignmentError("Data naskah belum tersedia.");
+      return;
+    }
 
     const appointedBy = localStorage.getItem("user_id");
     if (!appointedBy) {
@@ -259,10 +273,10 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
                 {reviewerAssignment ? "Edit Reviewer" : "Pilih Reviewer"}
               </button>
             )}
-            <Link href={`/dashboard/naskah/${naskah.id}/edit`} className="btn-edit">Edit</Link>
-            <button onClick={handleDelete} className="btn-danger" disabled={deleting}>
+            {canEdit && <Link href={`/dashboard/naskah/${naskah.id}/edit`} className="btn-edit">Edit</Link>}
+            {canDelete && <button onClick={handleDelete} className="btn-danger" disabled={deleting}>
               {deleting ? "Menghapus..." : "Hapus"}
-            </button>
+            </button>}
           </div>
         </div>
 

@@ -3,8 +3,15 @@
 import { useEffect, useState, ReactNode } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { getAllowedMenuKeys } from "@/lib/menu-access";
+import {
+  ACTIVE_ROLE_STORAGE_KEY,
+  getActiveRole,
+  getUserRoleNames,
+} from "@/lib/storage";
 
 interface NavItem {
+  key: "dashboard" | "naskah" | "roles" | "users" | "profil" | "fakultas-jurusan";
   href: string;
   label: string;
   icon: ReactNode;
@@ -12,6 +19,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   {
+    key: "dashboard",
     href: "/dashboard",
     label: "Dashboard",
     icon: (
@@ -22,6 +30,7 @@ const NAV: NavItem[] = [
     ),
   },
   {
+    key: "naskah",
     href: "/dashboard/naskah",
     label: "Pengajuan Naskah",
     icon: (
@@ -32,6 +41,7 @@ const NAV: NavItem[] = [
     ),
   },
   {
+    key: "roles",
     href: "/dashboard/roles",
     label: "Roles",
     icon: (
@@ -43,6 +53,7 @@ const NAV: NavItem[] = [
     ),
   },
   {
+    key: "users",
     href: "/dashboard/users",
     label: "Users",
     icon: (
@@ -53,6 +64,17 @@ const NAV: NavItem[] = [
     ),
   },
   {
+    key: "fakultas-jurusan",
+    href: "/dashboard/fakultas-jurusan",
+    label: "Fakultas dan Jurusan",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-6h6v6" /><path d="M9 9h.01M12 9h.01M15 9h.01" />
+      </svg>
+    ),
+  },
+  {
+    key: "profil",
     href: "/dashboard/profil",
     label: "Profil Saya",
     icon: (
@@ -74,6 +96,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [userEmail, setUserEmail] = useState("User");
+  const [activeRole, setActiveRole] = useState<string | null>(null);
+  const [userRoles, setUserRoles] = useState<string[]>([]);
+  const [rolePickerOpen, setRolePickerOpen] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("access_token");
@@ -81,6 +106,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
     if (token) {
       setIsAuthenticated(true);
+      setActiveRole(getActiveRole());
+      setUserRoles(getUserRoleNames());
       if (storedEmail) setUserEmail(storedEmail);
     } else {
       router.replace("/login");
@@ -105,7 +132,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     localStorage.removeItem("user_email");
     localStorage.removeItem("user_roles");
     localStorage.removeItem("user_role_names");
+    localStorage.removeItem("user_role_name");
+    localStorage.removeItem(ACTIVE_ROLE_STORAGE_KEY);
     router.push("/login");
+  };
+
+  const handleRoleChange = (role: string) => {
+    localStorage.setItem(ACTIVE_ROLE_STORAGE_KEY, role);
+    setActiveRole(role);
+    setRolePickerOpen(false);
+    router.push("/dashboard");
+    router.refresh();
   };
 
   const SidebarContent = ({ onClose }: SidebarProps) => (
@@ -127,7 +164,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       <nav className="flex-1 p-4 space-y-1">
-        {NAV.map((item) => {
+        {NAV.filter((item) => getAllowedMenuKeys(activeRole).includes(item.key)).map((item) => {
           const active =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -150,16 +187,59 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </nav>
 
       <div className="p-4 border-t" style={{ borderColor: "var(--color-border)" }}>
-        <div className="flex items-center gap-3 mb-3">
+        <button
+          type="button"
+          onClick={() => setRolePickerOpen((isOpen) => !isOpen)}
+          className="flex items-center gap-3 mb-3 w-full text-left"
+          aria-expanded={rolePickerOpen}
+          aria-haspopup="dialog"
+        >
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
             style={{ background: "var(--color-primary)" }}>
             {userEmail.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
             <div className="text-sm font-medium truncate">{userEmail}</div>
-            <div className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>Terautentikasi</div>
+            <div className="text-xs truncate" style={{ color: "var(--color-primary)" }}>
+              {activeRole || "Role belum dipilih"}
+            </div>
           </div>
-        </div>
+        </button>
+
+        {rolePickerOpen && (
+          <div
+            role="dialog"
+            aria-label="Pilih role aktif"
+            className="mb-3 p-3 rounded-lg"
+            style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}
+          >
+            <div className="text-xs font-semibold mb-2" style={{ color: "var(--color-text-muted)" }}>
+              Pilih role aktif
+            </div>
+            <div className="space-y-1">
+              {userRoles.map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => handleRoleChange(role)}
+                  className="w-full text-left px-3 py-2 rounded-md text-sm"
+                  style={{
+                    background: role === activeRole ? "var(--color-primary-pale)" : "transparent",
+                    color: role === activeRole ? "var(--color-primary)" : "var(--color-text)",
+                  }}
+                >
+                  {role}
+                </button>
+              ))}
+              {userRoles.length === 0 && (
+                <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  Belum ada role tersedia.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         <button
           onClick={handleLogout}
           className="btn-secondary w-full justify-center text-xs py-2"
@@ -209,7 +289,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        <main className="p-4 sm:p-6 lg:p-8 animate-fade-in">
+        <main key={activeRole ?? "no-active-role"} className="p-4 sm:p-6 lg:p-8 animate-fade-in">
           {children}
         </main>
       </div>

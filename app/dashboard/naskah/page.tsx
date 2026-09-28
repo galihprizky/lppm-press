@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ApiListResponse, Naskah } from "@/app/dashboard/naskah/types";
+import { ApiListResponse, canEditNaskah, canManageNaskah, Naskah } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
+import { getActiveRole } from "@/lib/storage";
 
 const PAGE_SIZE = 5;
 
@@ -15,13 +16,18 @@ export default function NaskahPage() {
   const [serverError, setServerError] = useState("");
   const [deleteModal, setDeleteModal] = useState<Naskah | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
+  const [canAuthorEdit, setCanAuthorEdit] = useState(false);
+  const [canManage, setCanManage] = useState(false);
+  const [isLppm, setIsLppm] = useState(false);
+  const [userId, setUserId] = useState("");
 
-  const fetchNaskah = async (pengusulId: string) => {
+  const fetchNaskah = async (pengusulId: string, lppm: boolean) => {
     setLoading(true);
     setServerError("");
     try {
-      const res = await fetch(`${API_URL}/naskah/pengusul/${pengusulId}`);
+      const res = await fetch(lppm ? `${API_URL}/naskah` : `${API_URL}/naskah/pengusul/${pengusulId}`);
       const json: ApiListResponse<Naskah> = await res.json();
+      if (!res.ok) throw new Error(json.message || "Gagal memuat data naskah.");
       setItems(Array.isArray(json?.data) ? json.data : []);
     } catch {
       setServerError("Tidak bisa memuat data naskah.");
@@ -32,6 +38,12 @@ export default function NaskahPage() {
 
   useEffect(() => {
     const userId = localStorage.getItem("user_id");
+    const activeRole = getActiveRole()?.trim().toUpperCase();
+    const lppm = activeRole === "LPPM";
+    setIsLppm(lppm);
+    setCanAuthorEdit(activeRole === "AUTHOR");
+    setCanManage(canManageNaskah(activeRole));
+    setUserId(userId ?? "");
 
     if (!userId) {
       setServerError("User belum login atau user_id tidak ditemukan.");
@@ -39,7 +51,7 @@ export default function NaskahPage() {
       return;
     }
 
-    fetchNaskah(userId);
+    fetchNaskah(userId, lppm);
   }, []);
 
   const filtered = useMemo(() => {
@@ -188,8 +200,12 @@ export default function NaskahPage() {
                     <td className="px-4 py-3.5">
                       <div className="flex items-center justify-end gap-2">
                         <Link href={`/dashboard/naskah/${n.id}`} className="btn-detail">Detail</Link>
-                        <Link href={`/dashboard/naskah/${n.id}/edit`} className="btn-edit">Edit</Link>
-                        <button onClick={() => setDeleteModal(n)} className="btn-danger">Hapus</button>
+                        {((isLppm || (canAuthorEdit && userId === String(n.pengusul_id))) && canEditNaskah(n.status_saat_ini)) && (
+                          <Link href={`/dashboard/naskah/${n.id}/edit`} className="btn-edit">Edit</Link>
+                        )}
+                        {canManage && (isLppm || userId === String(n.pengusul_id)) && (
+                          <button onClick={() => setDeleteModal(n)} className="btn-danger">Hapus</button>
+                        )}
                       </div>
                     </td>
                   </tr>

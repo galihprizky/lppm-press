@@ -8,6 +8,7 @@ import {
   NaskahForm,
   STATUS_COVER_OPTIONS,
   TARGET_PEMBACA_OPTIONS,
+  toApiTargetPembaca,
   WARNA_ISI_OPTIONS,
 } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
@@ -66,6 +67,10 @@ export default function TambahNaskahPage() {
 
     try {
       const userId = localStorage.getItem("user_id") ?? "";
+      if (!userId || !/^\d+$/.test(userId)) {
+        setServerError("Sesi user tidak valid. Silakan logout lalu login kembali dengan akun Author.");
+        return;
+      }
       const { file_draft_naskah, file_profile_penulis, file_surat_keaslian, ...rest } = form;
 
       const formData = new FormData();
@@ -75,7 +80,7 @@ export default function TambahNaskahPage() {
         status_saat_ini: "SUBMITTED",
       }).forEach(([key, value]) => {
         if (Array.isArray(value)) {
-          value.forEach((item) => formData.append(`${key}[]`, item));
+          value.forEach((item) => formData.append(`${key}[]`, toApiTargetPembaca(item)));
         } else {
           formData.append(key, String(value));
         }
@@ -95,6 +100,8 @@ export default function TambahNaskahPage() {
           const err = await res.json();
           if (typeof err?.message === "string" && err.message) {
             message = err.message;
+          } else if (Array.isArray(err?.message)) {
+            message = err.message.join(" ");
           }
         } catch {
           // ignore parse errors
@@ -140,17 +147,6 @@ export default function TambahNaskahPage() {
       <p className="text-sm mb-6" style={{ color: "var(--color-text-muted)" }}>
         Isi formulir berikut untuk mengajukan naskah.
       </p>
-
-      {serverError && (
-        <div className="mb-5 p-3 rounded-lg flex items-center gap-2 text-sm" style={{ background: "var(--color-danger-pale)", color: "var(--color-danger)" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="8" x2="12" y2="12" />
-            <line x1="12" y1="16" x2="12.01" y2="16" />
-          </svg>
-          {serverError}
-        </div>
-      )}
 
       <div className="card p-6">
         <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -272,6 +268,7 @@ export default function TambahNaskahPage() {
               <label className="block text-sm font-medium mb-1.5">File Draft Naskah</label>
               <input
                 type="file"
+                accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png"
                 className={`input-base ${errors.file_draft_naskah ? "error" : ""}`}
                 onChange={(e) => handleFile("file_draft_naskah", e.target.files?.[0] ?? null)}
               />
@@ -282,6 +279,7 @@ export default function TambahNaskahPage() {
               <label className="block text-sm font-medium mb-1.5">File Profil Penulis</label>
               <input
                 type="file"
+                accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png"
                 className={`input-base ${errors.file_profile_penulis ? "error" : ""}`}
                 onChange={(e) => handleFile("file_profile_penulis", e.target.files?.[0] ?? null)}
               />
@@ -292,6 +290,7 @@ export default function TambahNaskahPage() {
               <label className="block text-sm font-medium mb-1.5">File Surat Keaslian</label>
               <input
                 type="file"
+                accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png"
                 className={`input-base ${errors.file_surat_keaslian ? "error" : ""}`}
                 onChange={(e) => handleFile("file_surat_keaslian", e.target.files?.[0] ?? null)}
               />
@@ -313,6 +312,17 @@ export default function TambahNaskahPage() {
             </button>
           </div>
         </form>
+
+        {serverError && (
+          <div className="mt-5 p-3 rounded-lg flex items-center gap-2 text-sm" style={{ background: "var(--color-danger-pale)", color: "var(--color-danger)" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            {serverError}
+          </div>
+        )}
       </div>
     </div>
   );

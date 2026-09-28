@@ -5,14 +5,18 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ApiListResponse,
+  canManageNaskah,
+  canEditNaskah,
   JENIS_BUKU_OPTIONS,
   Naskah,
   NaskahForm,
   STATUS_COVER_OPTIONS,
   TARGET_PEMBACA_OPTIONS,
+  toApiTargetPembaca,
   WARNA_ISI_OPTIONS,
 } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
+import { getActiveRole } from "@/lib/storage";
 
 type FormErrors = Partial<Record<keyof NaskahForm, string>>;
 
@@ -39,6 +43,7 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [judulPreview, setJudulPreview] = useState("");
+  const [canEdit, setCanEdit] = useState(false);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -55,7 +60,17 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
           return;
         }
 
+        const userId = localStorage.getItem("user_id");
+        const activeRole = getActiveRole()?.trim().toUpperCase();
+        const isLppm = activeRole === "LPPM";
+        const isOwner = String(found.pengusul_id) === userId;
+        if (!canManageNaskah(activeRole) || (!isLppm && !isOwner) || !canEditNaskah(found.status_saat_ini)) {
+          setServerError("Naskah ini belum dapat diedit pada status atau role aktif saat ini.");
+          return;
+        }
+
         setJudulPreview(found.judul_naskah);
+        setCanEdit(true);
         setForm({
           pengusul_id: found.pengusul_id ?? "",
           judul_naskah: found.judul_naskah ?? "",
@@ -67,6 +82,9 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
           pake_editor_pribadi: Boolean(found.pake_editor_pribadi),
           status_cover: found.status_cover ?? "",
           status_saat_ini: found.status_saat_ini ?? "",
+          file_draft_naskah: null,
+          file_profile_penulis: null,
+          file_surat_keaslian: null,
         });
       } catch {
         setServerError("Tidak bisa memuat data naskah.");
@@ -103,13 +121,37 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
     setLoading(true);
 
     try {
-      const { pengusul_id, status_saat_ini, ...payload } = form;
+      const { file_draft_naskah, file_profile_penulis, file_surat_keaslian } = form;
+      const payload = {
+        judul_naskah: form.judul_naskah,
+        sinopsis: form.sinopsis,
+        jenis_buku: form.jenis_buku,
+        target_pembaca: form.target_pembaca.map(toApiTargetPembaca),
+        nama_semua_penulis: form.nama_semua_penulis,
+        warna_isi_buku: form.warna_isi_buku,
+        pake_editor_pribadi: form.pake_editor_pribadi,
+        status_cover: form.status_cover,
+      };
+      const hasFiles = Boolean(file_draft_naskah || file_profile_penulis || file_surat_keaslian);
+      const requestBody = hasFiles ? new FormData() : JSON.stringify(payload);
+
+      if (requestBody instanceof FormData) {
+        Object.entries(payload).forEach(([key, value]) => {
+          if (Array.isArray(value)) {
+            value.forEach((item) => requestBody.append(`${key}[]`, item));
+          } else {
+            requestBody.append(key, String(value));
+          }
+        });
+        if (file_draft_naskah) requestBody.append("file_draft_naskah", file_draft_naskah);
+        if (file_profile_penulis) requestBody.append("file_profile_penulis", file_profile_penulis);
+        if (file_surat_keaslian) requestBody.append("file_surat_keaslian", file_surat_keaslian);
+      }
+
       const res = await fetch(`${API_URL}/naskah/${id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+        ...(requestBody instanceof FormData ? {} : { headers: { "Content-Type": "application/json" } }),
+        body: requestBody,
       });
 
       if (!res.ok) {
@@ -146,8 +188,23 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
     update("target_pembaca", next);
   };
 
+  const handleFile = (key: "file_draft_naskah" | "file_profile_penulis" | "file_surat_keaslian", file: File | null) => {
+    setForm((prev) => ({ ...prev, [key]: file }));
+  };
+
   if (fetching) {
     return <div className="text-sm" style={{ color: "var(--color-text-muted)" }}>Memuat data naskah...</div>;
+  }
+
+  if (!canEdit) {
+    return (
+      <div className="max-w-2xl">
+        <div className="mb-5 p-3 rounded-lg text-sm" style={{ background: "var(--color-danger-pale)", color: "var(--color-danger)" }}>
+          {serverError || "Naskah tidak dapat diedit."}
+        </div>
+        <Link href="/dashboard/naskah" className="btn-primary">Kembali ke Pengajuan Naskah</Link>
+      </div>
+    );
   }
 
   return (
@@ -190,6 +247,24 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
                 ))}
               </select>
               {errors.jenis_buku && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.jenis_buku}</p>}
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-5">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">File Draft Naskah</label>
+              <input type="file" accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png" className="input-base" onChange={(e) => handleFile("file_draft_naskah", e.target.files?.[0] ?? null)} />
+              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>PDF, Word, atau gambar. Kosongkan jika tidak diubah.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">File Profil Penulis</label>
+              <input type="file" accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png" className="input-base" onChange={(e) => handleFile("file_profile_penulis", e.target.files?.[0] ?? null)} />
+              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>PDF, Word, atau gambar. Kosongkan jika tidak diubah.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">File Surat Keaslian</label>
+              <input type="file" accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png" className="input-base" onChange={(e) => handleFile("file_surat_keaslian", e.target.files?.[0] ?? null)} />
+              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>PDF, Word, atau gambar. Kosongkan jika tidak diubah.</p>
             </div>
           </div>
 
