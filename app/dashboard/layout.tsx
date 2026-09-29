@@ -216,7 +216,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <div className="text-xs font-semibold mb-2" style={{ color: "var(--color-text-muted)" }}>
               Pilih role aktif
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 max-h-48 overflow-y-auto">
               {userRoles.map((role) => (
                 <button
                   key={role}
