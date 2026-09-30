@@ -2,16 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ApiListResponse, canEditNaskah, canManageNaskah, Naskah } from "@/app/dashboard/naskah/types";
+import { ApiListResponse, canEditNaskah, canManageNaskah, Naskah, JENIS_BUKU_OPTIONS, STATUS_SAAT_INI_OPTIONS } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
 import { getActiveRole } from "@/lib/storage";
 
 const PAGE_SIZE = 5;
 
+type SortOrder = "asc" | "desc";
+
 export default function NaskahPage() {
   const [items, setItems] = useState<Naskah[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [jenisBukuFilter, setJenisBukuFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [page, setPage] = useState(1);
   const [serverError, setServerError] = useState("");
   const [deleteModal, setDeleteModal] = useState<Naskah | null>(null);
@@ -54,23 +59,46 @@ export default function NaskahPage() {
     fetchNaskah(userId, lppm);
   }, []);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return items;
-    return items.filter((n) => {
-      const target = Array.isArray(n.target_pembaca) ? n.target_pembaca.join(" ") : "";
-      return (
-        n.judul_naskah?.toLowerCase().includes(q) ||
-        n.nama_semua_penulis?.toLowerCase().includes(q) ||
-        n.jenis_buku?.toLowerCase().includes(q) ||
-        n.status_saat_ini?.toLowerCase().includes(q) ||
-        target.toLowerCase().includes(q)
-      );
-    });
-  }, [items, search]);
+  const filteredAndSorted = useMemo(() => {
+    let result = [...items];
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    // Filter pencarian
+    const q = search.toLowerCase().trim();
+    if (q) {
+      result = result.filter((n) => {
+        const target = Array.isArray(n.target_pembaca) ? n.target_pembaca.join(" ") : "";
+        return (
+          n.judul_naskah?.toLowerCase().includes(q) ||
+          n.nama_semua_penulis?.toLowerCase().includes(q) ||
+          n.jenis_buku?.toLowerCase().includes(q) ||
+          n.status_saat_ini?.toLowerCase().includes(q) ||
+          target.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    // Filter jenis buku
+    if (jenisBukuFilter) {
+      result = result.filter((n) => n.jenis_buku === jenisBukuFilter);
+    }
+
+    // Filter status
+    if (statusFilter) {
+      result = result.filter((n) => n.status_saat_ini === statusFilter);
+    }
+
+    // Sorting berdasarkan ID
+    result.sort((a, b) => {
+      const idA = Number(a.id) || 0;
+      const idB = Number(b.id) || 0;
+      return sortOrder === "asc" ? idA - idB : idB - idA;
+    });
+
+    return result;
+  }, [items, search, jenisBukuFilter, statusFilter, sortOrder]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredAndSorted.length / PAGE_SIZE));
+  const paginated = filteredAndSorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const handleDelete = async () => {
     if (!deleteModal) return;
@@ -140,18 +168,64 @@ export default function NaskahPage() {
       )}
 
       <div className="card overflow-hidden">
-        <div className="p-4 border-b" style={{ borderColor: "var(--color-border)" }}>
-          <div className="relative max-w-sm">
-            <input
-              type="text"
-              className="input-base pl-9"
-              placeholder="Cari judul, penulis, jenis, status..."
-              value={search}
+        <div className="p-4 border-b space-y-3" style={{ borderColor: "var(--color-border)" }}>
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
+            <div className="relative min-w-0">
+              <input
+                type="text"
+                className="input-base w-[85%]"
+                placeholder="Cari judul, penulis, jenis, status..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            <select
+              className="input-base w-[85%] text-xs py-2 pr-15"
+              value={jenisBukuFilter}
               onChange={(e) => {
-                setSearch(e.target.value);
+                setJenisBukuFilter(e.target.value);
                 setPage(1);
               }}
-            />
+            >
+              <option value="">Semua Jenis Buku</option>
+              {JENIS_BUKU_OPTIONS.map((item) => (
+                <option key={item} value={item}>{item}</option>
+              ))}
+            </select>
+
+            <select
+              className="input-base w-[85%] text-xs py-2 pr-15"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Semua Status</option>
+              {STATUS_SAAT_INI_OPTIONS.map((item) => (
+                <option key={item} value={item}>{item}</option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+              className="btn-secondary h-11 w-full text-xs py-2 gap-1.5 justify-center whitespace-nowrap"
+              title="Urutkan ID"
+            >
+              <span>Urutan: {sortOrder === "asc" ? "Terlama" : "Terbaru"}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {sortOrder === "asc" ? (
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                ) : (
+                  <path d="M12 5v14M5 12l7 7 7-7" />
+                )}
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -218,7 +292,7 @@ export default function NaskahPage() {
         {totalPages > 1 && (
           <div className="px-4 py-3 flex items-center justify-between border-t" style={{ borderColor: "var(--color-border)" }}>
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-              Halaman {page} dari {totalPages} • {filtered.length} data
+              Halaman {page} dari {totalPages} • {filteredAndSorted.length} data
             </p>
             <div className="flex items-center gap-1">
               <button

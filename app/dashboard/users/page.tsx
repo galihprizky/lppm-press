@@ -2,14 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ApiResponse, User } from "./types";
+import { ApiResponse, User, Fakultas, Jurusan } from "./types";
 
 import { API_URL as BASE_API_URL } from "@/lib/config";
 const API_URL = `${BASE_API_URL}/users`;
+type SortOrder = "asc" | "desc";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [fakultasOptions, setFakultasOptions] = useState<Fakultas[]>([]);
+  const [jurusanOptions, setJurusanOptions] = useState<Jurusan[]>([]);
   const [search, setSearch] = useState("");
+  const [fakultasFilter, setFakultasFilter] = useState("");
+  const [jurusanFilter, setJurusanFilter] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
@@ -17,21 +23,42 @@ export default function UsersPage() {
   const [successMsg, setSuccessMsg] = useState("");
 
   useEffect(() => {
-    fetch(API_URL)
-      .then(async (response) => {
+    Promise.all([
+      fetch(API_URL).then(async (response) => {
         const json: ApiResponse<User[]> = await response.json();
         if (!response.ok) throw new Error(json.message || "Gagal memuat data users.");
-        setUsers(Array.isArray(json.data) ? json.data : []);
+        return json;
+      }),
+      fetch(`${BASE_API_URL}/fakultas`).then((response) => response.json()),
+      fetch(`${BASE_API_URL}/jurusan`).then((response) => response.json()),
+    ])
+      .then(([usersResponse, fakultasResponse, jurusanResponse]) => {
+        setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
+        setFakultasOptions(Array.isArray(fakultasResponse.data) ? fakultasResponse.data : []);
+        setJurusanOptions(Array.isArray(jurusanResponse.data) ? jurusanResponse.data : []);
       })
       .catch((error) => setServerError(error instanceof Error ? error.message : "Tidak bisa memuat data users."))
       .finally(() => setLoading(false));
   }, []);
 
+  const filteredJurusanOptions = useMemo(
+    () => fakultasFilter
+      ? jurusanOptions.filter((item) => String(item.fakultas_id) === fakultasFilter)
+      : jurusanOptions,
+    [fakultasFilter, jurusanOptions]
+  );
+
   const filteredUsers = useMemo(() => {
     const query = search.toLowerCase().trim();
-    if (!query) return users;
-    return users.filter((user) => [user.nama, user.nip, user.email, user.no_hp, user.jurusan?.nama_jurusan ?? "", user.roles.map((role) => role.nama_role).join(" ")].some((value) => value.toLowerCase().includes(query)));
-  }, [search, users]);
+    return [...users]
+      .filter((user) => !query || [user.nama, user.nip, user.email, user.no_hp, user.jurusan?.nama_jurusan ?? "", user.roles.map((role) => role.nama_role).join(" ")].some((value) => value.toLowerCase().includes(query)))
+      .filter((user) => !fakultasFilter || String(user.jurusan?.fakultas_id) === fakultasFilter)
+      .filter((user) => !jurusanFilter || String(user.jurusan_id) === jurusanFilter)
+      .sort((a, b) => {
+        const comparison = (a.nama || "").localeCompare(b.nama || "", "id", { sensitivity: "base" });
+        return sortOrder === "asc" ? comparison : -comparison;
+      });
+  }, [search, users, fakultasFilter, jurusanFilter, sortOrder]);
 
   const handleDelete = async () => {
     if (!deleteUser) return;
@@ -60,7 +87,22 @@ export default function UsersPage() {
       {successMsg && <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: "var(--color-success-pale)", color: "var(--color-success)" }}>{successMsg}</div>}
       {serverError && <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: "var(--color-danger-pale)", color: "var(--color-danger)" }}>{serverError}</div>}
       <div className="card overflow-hidden">
-        <div className="p-4 border-b" style={{ borderColor: "var(--color-border)" }}><input className="input-base max-w-sm" placeholder="Cari nama, NIP, email, jurusan..." value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+        <div className="p-4 border-b" style={{ borderColor: "var(--color-border)" }}>
+          <div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2">
+            <input className="input-base w-[85%]" placeholder="Cari nama, NIP, email, jurusan..." value={search} onChange={(event) => setSearch(event.target.value)} />
+            <select className="input-base w-[85%] text-xs py-2 pr-15" value={fakultasFilter} onChange={(event) => { setFakultasFilter(event.target.value); setJurusanFilter(""); }}>
+              <option value="">Semua Fakultas</option>
+              {fakultasOptions.map((item) => <option key={item.id} value={item.id}>{item.nama_fakultas}</option>)}
+            </select>
+            <select className="input-base w-[85%] text-xs py-2 pr-15" value={jurusanFilter} onChange={(event) => setJurusanFilter(event.target.value)}>
+              <option value="">Semua Prodi/Jurusan</option>
+              {filteredJurusanOptions.map((item) => <option key={item.id} value={item.id}>{item.nama_jurusan}</option>)}
+            </select>
+            <button type="button" onClick={() => setSortOrder((value) => value === "asc" ? "desc" : "asc")} className="btn-secondary w-[85%] text-xs py-2 justify-center">
+              Nama: {sortOrder === "asc" ? "A-Z (Ascending)" : "Z-A (Descending)"}
+            </button>
+          </div>
+        </div>
         <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr style={{ background: "var(--color-bg)", borderBottom: "1px solid var(--color-border)" }}><th className="text-left px-4 py-3 text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>User</th><th className="text-left px-4 py-3 text-xs uppercase tracking-wider hidden md:table-cell" style={{ color: "var(--color-text-muted)" }}>Kontak</th><th className="text-left px-4 py-3 text-xs uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--color-text-muted)" }}>Jurusan</th><th className="text-left px-4 py-3 text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Role</th><th className="text-right px-4 py-3 text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Aksi</th></tr></thead><tbody>
           {loading ? <tr><td colSpan={5} className="text-center py-10" style={{ color: "var(--color-text-muted)" }}>Memuat data...</td></tr> : filteredUsers.length === 0 ? <tr><td colSpan={5} className="text-center py-10" style={{ color: "var(--color-text-muted)" }}>Belum ada data user.</td></tr> : filteredUsers.map((user, index) => <tr key={user.id} style={{ borderBottom: index < filteredUsers.length - 1 ? "1px solid var(--color-border)" : "none" }}><td className="px-4 py-3.5"><div className="font-medium">{user.nama}</div><div className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>{user.nip} · {user.is_active ? "Aktif" : "Nonaktif"}</div></td><td className="px-4 py-3.5 hidden md:table-cell"><div>{user.email}</div><div className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>{user.no_hp || "-"}</div></td><td className="px-4 py-3.5 hidden lg:table-cell">{user.jurusan?.nama_jurusan || "-"}</td><td className="px-4 py-3.5">{user.roles.length ? user.roles.map((role) => <span className="badge mr-1" key={role.id}>{role.nama_role}</span>) : <span style={{ color: "var(--color-text-muted)" }}>-</span>}</td><td className="px-4 py-3.5"><div className="flex items-center justify-end gap-2"><Link href={`/dashboard/users/${user.id}`} className="btn-detail">Detail</Link><Link href={`/dashboard/users/${user.id}/edit`} className="btn-edit">Edit</Link><button onClick={() => setDeleteUser(user)} className="btn-danger">Hapus</button></div></td></tr>)}
         </tbody></table></div>
