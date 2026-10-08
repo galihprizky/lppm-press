@@ -10,6 +10,9 @@ export interface Naskah {
   pake_editor_pribadi: boolean;
   status_cover: string;
   status_saat_ini: string;
+  created_at?: string;
+  file_draft_naskah?: string | null;
+  file_draft_naskah_revisi?: string | null;
 }
 
 export interface NaskahForm {

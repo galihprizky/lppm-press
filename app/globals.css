@@ -214,3 +214,152 @@ body {
 .badge-si { background: #fef9e7; color: #b7770d; }
 .badge-te { background: #fdf2f8; color: #8e44ad; }
 .badge-manajemen { background: #eafaf1; color: #1e8449; }
+
+/* Metadata naskah */
+.naskah-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 0.7rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+.naskah-meta-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.25rem;
+  min-height: 4.1rem;
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fbfaf7;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+.naskah-meta-label {
+  font-size: 0.68rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+.naskah-meta-value {
+  overflow: hidden;
+  color: var(--color-text);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.naskah-meta-status {
+  border-color: #b8d9c3;
+  background: var(--color-primary-pale);
+  color: var(--color-primary);
+}
+.naskah-meta-status .naskah-meta-value {
+  color: var(--color-primary);
+}
+
+/* Daftar naskah reviewer */
+.reviewer-sidebar {
+  overflow: hidden;
+}
+.reviewer-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.15rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.reviewer-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--color-primary-pale);
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.reviewer-list {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.65rem;
+}
+.reviewer-list-item {
+  display: grid;
+  grid-template-columns: 1.7rem minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.85rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s, border-color 0.2s;
+}
+.reviewer-list-item:hover {
+  border-color: var(--color-border);
+  background: #fbfaf7;
+}
+.reviewer-list-item.is-selected {
+  border-color: #b8d9c3;
+  background: var(--color-primary-pale);
+}
+.reviewer-list-index {
+  padding-top: 0.1rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.reviewer-list-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.reviewer-list-title {
+  overflow: hidden;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reviewer-list-author {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reviewer-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #9a6a16;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.reviewer-status.is-complete {
+  color: var(--color-success);
+}
+.reviewer-status-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.reviewer-list-arrow {
+  align-self: center;
+  color: var(--color-text-muted);
+  font-size: 1.35rem;
+  line-height: 1;
+}

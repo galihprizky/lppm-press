@@ -63,6 +63,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [reviewerAssignment, setReviewerAssignment] = useState<ReviewerAssignment | null>(null);
   const [canEdit, setCanEdit] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
+  const [isAssignedReviewer, setIsAssignedReviewer] = useState(false);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -97,12 +98,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     const storedRoles = localStorage.getItem("user_role_names");
-    try {
-      const roleNames: string[] = storedRoles ? JSON.parse(storedRoles) : [];
-      setIsLppm(roleNames.includes("LPPM"));
-    } catch {
-      setIsLppm(false);
-    }
+    setIsLppm(getActiveRole()?.trim().toUpperCase() === "LPPM");
 
     if (!storedRoles) return;
 
@@ -112,7 +108,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
         if (!response.ok) throw new Error(json.message || "Gagal memuat reviewer.");
         setReviewers(
           (Array.isArray(json.data) ? json.data : []).filter((user) =>
-            user.roles?.some((role) => ["REVIEWER"].includes(role.nama_role))
+            user.roles?.some((role) => role.nama_role.trim().toUpperCase() === "LPPM")
           )
         );
       })
@@ -127,6 +123,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
         const assignment = Array.isArray(json.data) ? json.data[0] ?? null : null;
 
         setReviewerAssignment(assignment);
+        setIsAssignedReviewer(assignment?.reviewer_id === Number(localStorage.getItem("user_id")));
         if (assignment) {
           setReviewerId(String(assignment.reviewer_id));
           setDeadlineReview(assignment.deadline_review.slice(0, 16));
@@ -155,6 +152,10 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
     if (!naskah) {
       setAssignmentError("Data naskah belum tersedia.");
+      return;
+    }
+    if (!isLppm) {
+      setAssignmentError("Hanya role LPPM yang dapat menugaskan reviewer.");
       return;
     }
 
@@ -274,6 +275,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
               </button>
             )}
             {canEdit && <Link href={`/dashboard/naskah/${naskah.id}/edit`} className="btn-edit">Edit</Link>}
+            {isAssignedReviewer && <Link href="/dashboard/reviewer" className="btn-secondary">Buka Review</Link>}
             {canDelete && <button onClick={handleDelete} className="btn-danger" disabled={deleting}>
               {deleting ? "Menghapus..." : "Hapus"}
             </button>}
@@ -288,15 +290,33 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
             <InfoRow className="font-semibold md:col-span-3" label="Judul Naskah" value={naskah.judul_naskah} />
             <InfoRow label="Sinopsis" value={naskah.sinopsis} className="md:col-span-3" />
           </div>
-          <div className="flex flex-wrap gap-2 mb-6">
-          <span className="badge">{naskah.status_saat_ini || "-"}</span>
-          <span className="badge">{naskah.jenis_buku || "-"}</span>
+          <div className="naskah-meta mb-6" aria-label="Metadata naskah">
+          <div className="naskah-meta-item naskah-meta-status">
+            <span className="naskah-meta-label">Status</span>
+            <span className="naskah-meta-value">{naskah.status_saat_ini || "-"}</span>
+          </div>
+          <div className="naskah-meta-item">
+            <span className="naskah-meta-label">Jenis buku</span>
+            <span className="naskah-meta-value">{naskah.jenis_buku || "-"}</span>
+          </div>
           {(naskah.target_pembaca ?? []).map((target) => (
-            <span key={target} className="badge">{target}</span>
+            <div key={target} className="naskah-meta-item">
+              <span className="naskah-meta-label">Target</span>
+              <span className="naskah-meta-value">{target}</span>
+            </div>
           ))}
-          <span className="badge">{naskah.warna_isi_buku || "-"}</span>
-          <span className="badge">{naskah.status_cover || "-"}</span>
-          <span className="badge">Editor pribadi: {naskah.pake_editor_pribadi ? "Ya" : "Tidak"}</span>
+          <div className="naskah-meta-item">
+            <span className="naskah-meta-label">Warna isi</span>
+            <span className="naskah-meta-value">{naskah.warna_isi_buku || "-"}</span>
+          </div>
+          <div className="naskah-meta-item">
+            <span className="naskah-meta-label">Status cover</span>
+            <span className="naskah-meta-value">{naskah.status_cover || "-"}</span>
+          </div>
+          <div className="naskah-meta-item">
+            <span className="naskah-meta-label">Editor pribadi</span>
+            <span className="naskah-meta-value">{naskah.pake_editor_pribadi ? "Ya" : "Tidak"}</span>
+          </div>
         </div>
         </details>
         

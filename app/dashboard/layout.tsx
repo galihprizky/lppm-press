@@ -11,7 +11,7 @@ import {
 } from "@/lib/storage";
 
 interface NavItem {
-  key: "dashboard" | "naskah" | "roles" | "users" | "profil" | "fakultas-jurusan";
+  key: "dashboard" | "naskah" | "roles" | "users" | "profil" | "fakultas-jurusan" | "reviewer";
   href: string;
   label: string;
   icon: ReactNode;
@@ -80,6 +80,17 @@ const NAV: NavItem[] = [
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" />
+      </svg>
+    ),
+  },
+  {
+    key: "reviewer",
+    href: "/dashboard/reviewer",
+    label: "Review Naskah",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M4 5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2z" />
+        <path d="M8 8h8M8 12h5M8 16h3" />
       </svg>
     ),
   },
@@ -190,20 +201,39 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <button
           type="button"
           onClick={() => setRolePickerOpen((isOpen) => !isOpen)}
-          className="flex items-center gap-3 mb-3 w-full text-left"
+          className="flex items-center gap-3 mb-3 w-full text-left p-2 rounded-lg border transition-colors hover:bg-[var(--color-bg)]"
+          style={{ borderColor: rolePickerOpen ? "#b8d9c3" : "var(--color-border)" }}
           aria-expanded={rolePickerOpen}
           aria-haspopup="dialog"
+          title="Ganti role aktif"
         >
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
             style={{ background: "var(--color-primary)" }}>
             {userEmail.charAt(0).toUpperCase()}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-medium truncate">{userEmail}</div>
-            <div className="text-xs truncate" style={{ color: "var(--color-primary)" }}>
-              {activeRole || "Role belum dipilih"}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[0.65rem] uppercase tracking-wide" style={{ color: "var(--color-text-muted)" }}>Role aktif</span>
+              <span
+                className="inline-flex max-w-[7rem] truncate rounded-md px-1.5 py-0.5 text-[0.65rem] font-bold"
+                style={{ background: "var(--color-primary-pale)", color: "var(--color-primary)" }}
+              >
+                {activeRole || "Pilih role"}
+              </span>
             </div>
           </div>
+          <svg
+            className={`w-4 h-4 flex-shrink-0 transition-transform ${rolePickerOpen ? "rotate-180" : ""}`}
+            style={{ color: "var(--color-text-muted)" }}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
         </button>
 
         {rolePickerOpen && (

@@ -1,5 +1,22 @@
 export const ACTIVE_ROLE_STORAGE_KEY = "role_aktif";
 
+function toRoleName(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (!value || typeof value !== "object") return null;
+
+  const role = value as Record<string, unknown>;
+  const name = role.nama_role ?? role.name ?? role.role_name;
+  return typeof name === "string" && name.trim() ? name.trim() : null;
+}
+
+export function normalizeRoleNames(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : [value];
+  return values.flatMap((item) => {
+    const name = toRoleName(item);
+    return name ? [name] : [];
+  });
+}
+
 export function getActiveRole(): string | null {
   if (typeof window === "undefined") return null;
 
@@ -17,9 +34,7 @@ export function getUserRoleNames(): string[] {
 
   try {
     const roles = JSON.parse(storedRoles);
-    return Array.isArray(roles)
-      ? roles.filter((role): role is string => typeof role === "string")
-      : [];
+    return normalizeRoleNames(roles);
   } catch {
     return [];
   }
