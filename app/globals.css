@@ -260,6 +260,13 @@ body {
   color: var(--color-primary);
 }
 
+.review-naskah-page .naskah-meta-value {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* Daftar naskah reviewer */
 .reviewer-sidebar {
   overflow: hidden;

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, use, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ApiListResponse, canEditNaskah, canManageNaskah, Naskah } from "@/app/dashboard/naskah/types";
@@ -20,6 +20,13 @@ interface ReviewerAssignment {
   ditunjuk_oleh?: number;
   nama_penunjuk?: string;
 }
+
+const MAX_REVISION_FILE_SIZE = 50 * 1024 * 1024;
+
+const placeholderReview = {
+  note: "Catatan review dari reviewer akan tampil di sini setelah proses review selesai.",
+  fileName: "catatan-review-placeholder.pdf",
+};
 
 function InfoRow({ label, value, className = "" }: { label: string; value?: string | null; className?: string }) {
   return (
@@ -61,6 +68,10 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [assignmentError, setAssignmentError] = useState("");
   const [assignmentSuccess, setAssignmentSuccess] = useState("");
   const [reviewerAssignment, setReviewerAssignment] = useState<ReviewerAssignment | null>(null);
+  const [activeRole, setActiveRole] = useState("");
+  const [revisionFile, setRevisionFile] = useState<File | null>(null);
+  const [revisionError, setRevisionError] = useState("");
+  const [revisionMessage, setRevisionMessage] = useState("");
   const [canEdit, setCanEdit] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
   const [isAssignedReviewer, setIsAssignedReviewer] = useState(false);
@@ -81,11 +92,12 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
         setNaskah(found);
         const userId = localStorage.getItem("user_id");
-        const activeRole = getActiveRole();
-        const isLppm = activeRole?.trim().toUpperCase() === "LPPM";
+        const currentRole = getActiveRole()?.trim().toUpperCase() || "";
+        const isLppm = currentRole === "LPPM";
+        setActiveRole(currentRole);
         const isOwner = String(found?.pengusul_id) === userId;
-        setCanEdit(canManageNaskah(activeRole) && (isLppm || isOwner) && canEditNaskah(found?.status_saat_ini));
-        setCanDelete(canManageNaskah(activeRole) && (isLppm || isOwner));
+        setCanEdit(canManageNaskah(currentRole) && (isLppm || isOwner) && canEditNaskah(found?.status_saat_ini));
+        setCanDelete(canManageNaskah(currentRole) && (isLppm || isOwner));
       } catch {
         setServerError("Tidak bisa memuat detail naskah.");
       } finally {
@@ -231,6 +243,34 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
     }
   };
 
+  const handleRevisionFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setRevisionError("");
+    setRevisionMessage("");
+
+    if (file && file.size > MAX_REVISION_FILE_SIZE) {
+      setRevisionFile(null);
+      event.target.value = "";
+      setRevisionError("Ukuran file melebihi batas maksimal 50 MB.");
+      return;
+    }
+
+    setRevisionFile(file);
+  };
+
+  const handleRevisionSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setRevisionError("");
+    setRevisionMessage("");
+
+    if (!revisionFile) {
+      setRevisionError("Pilih satu file naskah hasil revisi terlebih dahulu.");
+      return;
+    }
+
+    setRevisionMessage("File revisi sudah dipilih. Pengiriman ke API akan tersedia pada tahap integrasi berikutnya.");
+  };
+
   if (loading) {
     return <div className="text-sm" style={{ color: "var(--color-text-muted)" }}>Memuat detail naskah...</div>;
   }
@@ -337,6 +377,70 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
             </div>
           </details>
         </div>
+      )}
+
+      {(activeRole === "AUTHOR" || activeRole === "USER") && (
+        <section className="card p-6 mb-5">
+          <div className="mb-5">
+            <h2 className="text-lg font-semibold">Detail Review</h2>
+            <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
+              Catatan dan dokumen dari reviewer untuk naskah ini.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+            <InfoRow
+              label="Nama Reviewer"
+              value={reviewerAssignment?.nama_reviewer || (reviewerAssignment?.reviewer_id ? `User #${reviewerAssignment.reviewer_id}` : "Belum ada reviewer")}
+            />
+            <div className="py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+              <span className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>File Review</span>
+              <a href="#file-review-placeholder" className="text-sm underline" style={{ color: "var(--color-primary)" }} onClick={(event) => event.preventDefault()}>
+                {placeholderReview.fileName}
+              </a>
+            </div>
+            <div className="py-3 border-b md:col-span-2" style={{ borderColor: "var(--color-border)" }}>
+              <span className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Review</span>
+              <p className="text-sm leading-6">{placeholderReview.note}</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleRevisionSubmit} className="mt-6 pt-6 border-t space-y-4" style={{ borderColor: "var(--color-border)" }}>
+            <div>
+              <h3 className="font-semibold">Upload Revisi Naskah</h3>
+              <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
+                Pilih satu file naskah hasil revisi untuk dikirimkan kepada reviewer.
+              </p>
+            </div>
+            <div>
+              <label
+                className="block text-sm font-medium mb-1.5"
+                htmlFor="revision-file"
+              >
+                File naskah revisi
+              </label>
+              <input
+                id="revision-file"
+                type="file"
+                className={`input-base ${revisionError ? "error" : ""}`}
+                onChange={handleRevisionFileChange}
+              />
+              <p className="text-xs mt-1.5" style={{ color: "var(--color-text-muted)" }}>
+                Maksimal ukuran file: 50 MB. Hanya satu file.
+              </p>
+              {revisionFile && (
+                <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
+                  File dipilih: {revisionFile.name}
+                </p>
+              )}
+            </div>
+            {revisionError && <p className="text-sm" style={{ color: "var(--color-danger)" }}>{revisionError}</p>}
+            {revisionMessage && <p className="text-sm" style={{ color: "var(--color-success)" }}>{revisionMessage}</p>}
+            <div className="flex justify-end">
+              <button type="submit" className="btn-primary">Kirim File Revisi</button>
+            </div>
+          </form>
+        </section>
       )}
 
       <Link href="/dashboard/naskah" className="btn-secondary">

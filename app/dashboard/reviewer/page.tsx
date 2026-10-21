@@ -1,8 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { ApiListResponse, Naskah } from "@/app/dashboard/naskah/types";
-import { API_URL } from "@/lib/config";
+import { fetchReviewerNaskahList } from "@/lib/reviewer";
 
 interface ReviewDocument {
   label: string;
@@ -22,6 +21,12 @@ interface ReviewComment {
 interface ReviewSubmission {
   id: number;
   title: string;
+  synopsis: string;
+  bookType: string;
+  targets: string[];
+  interiorColor: string;
+  coverStatus: string;
+  personalEditor: string;
   author: string;
   submittedAt: string;
   deadline: string;
@@ -29,11 +34,6 @@ interface ReviewSubmission {
   before: ReviewDocument;
   after: ReviewDocument;
   comments: ReviewComment[];
-}
-
-interface ReviewerAssignment {
-  reviewer_id: number;
-  deadline_review?: string;
 }
 
 const REVIEW_STORAGE_KEY = "reviewer_comments_draft";
@@ -53,7 +53,8 @@ function displayText(value: unknown): string {
 
 function formatDate(value?: unknown) {
   if (!value) return "-";
-  const date = new Date(value);
+  const dateValue = typeof value === "string" || typeof value === "number" || value instanceof Date ? value : displayText(value);
+  const date = new Date(dateValue);
   return Number.isNaN(date.getTime()) ? displayText(value) : new Intl.DateTimeFormat("id-ID", { dateStyle: "long" }).format(date);
 }
 
@@ -83,9 +84,8 @@ function normalizeComments(value: unknown): ReviewComment[] {
   });
 }
 
-export default function ReviewerPage() {
+export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
   const [reviews, setReviews] = useState<ReviewSubmission[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [comment, setComment] = useState("");
@@ -101,21 +101,17 @@ export default function ReviewerPage() {
       }
 
       try {
-        const response = await fetch(`${API_URL}/naskah`);
-        const payload: ApiListResponse<Naskah> = await response.json();
-        if (!response.ok) throw new Error(payload.message || "Gagal memuat daftar naskah.");
-        const naskahList = Array.isArray(payload.data) ? payload.data : [];
-        const assigned = (await Promise.all(naskahList.map(async (naskah) => {
-          const assignmentResponse = await fetch(`${API_URL}/penugasan-reviewer/naskah/${naskah.id}`);
-          if (!assignmentResponse.ok) return null;
-          const assignmentPayload: { data?: ReviewerAssignment[] } = await assignmentResponse.json();
-          const assignment = assignmentPayload.data?.find((item) => item.reviewer_id === reviewerId);
-          return assignment ? { naskah, assignment } : null;
-        }))).filter((item): item is { naskah: Naskah; assignment: ReviewerAssignment } => item !== null);
+        const assigned = await fetchReviewerNaskahList(reviewerId);
 
         const nextReviews = assigned.map(({ naskah, assignment }) => ({
           id: naskah.id,
           title: displayText(naskah.judul_naskah),
+          synopsis: displayText(naskah.sinopsis),
+          bookType: displayText(naskah.jenis_buku),
+          targets: Array.isArray(naskah.target_pembaca) ? naskah.target_pembaca.map(displayText) : [],
+          interiorColor: displayText(naskah.warna_isi_buku),
+          coverStatus: displayText(naskah.status_cover),
+          personalEditor: naskah.pake_editor_pribadi ? "Ya" : "Tidak",
           author: displayText(naskah.nama_semua_penulis),
           submittedAt: formatDate(naskah.created_at),
           deadline: formatDate(assignment.deadline_review),
@@ -125,7 +121,6 @@ export default function ReviewerPage() {
           comments: [],
         }));
         setReviews(nextReviews);
-        setSelectedId(nextReviews[0]?.id ?? null);
       } catch (error) {
         setLoadError(error instanceof Error ? error.message : "Tidak bisa memuat naskah yang ditugaskan.");
       } finally {
@@ -150,7 +145,7 @@ export default function ReviewerPage() {
     }
   }, []);
 
-  const selectedReview = reviews.find((review) => review.id === selectedId);
+  const selectedReview = reviews.find((review) => String(review.id) === reviewId) ?? reviews[0];
 
   const submitComment = (event: FormEvent) => {
     event.preventDefault();
@@ -178,47 +173,86 @@ export default function ReviewerPage() {
 
   return (
     <div>
-      <div className="mb-6"><h1 className="text-2xl font-bold mb-1">Review Naskah</h1><p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Naskah yang tampil diambil dari penugasan Reviewer akun ini.</p></div>
-      <div className="grid xl:grid-cols-[300px_1fr] gap-6 items-start">
-        <aside className="card overflow-hidden">
-          <div className="flex items-center justify-between gap-4 p-4 border-b" style={{ borderColor: "var(--color-border)" }}>
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Naskah Ditugaskan</div>
-              <div className="text-sm mt-1">Pilih naskah untuk mulai review</div>
-            </div>
-            <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: "var(--color-primary-pale)", color: "var(--color-primary)" }}>{reviews.length}</span>
-          </div>
-          <div className="p-2 space-y-2">
-            {reviews.map((review, index) => (
-              <button
-                type="button"
-                key={review.id}
-                onClick={() => setSelectedId(review.id)}
-                className={`w-full text-left p-3 rounded-lg border grid grid-cols-[1.7rem_minmax(0,1fr)_auto] items-start gap-3 transition-colors ${selectedId === review.id ? "border-[#b8d9c3]" : "border-transparent hover:border-[var(--color-border)] hover:bg-[#fbfaf7]"}`}
-                style={selectedId === review.id ? { background: "var(--color-primary-pale)" } : undefined}
-              >
-                <span className="pt-0.5 text-xs font-medium" style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-mono), monospace" }}>{String(index + 1).padStart(2, "0")}</span>
-                <span className="min-w-0 flex flex-col gap-1">
-                  <span className="truncate text-sm font-bold">{review.title}</span>
-                  <span className="truncate text-xs" style={{ color: "var(--color-text-muted)" }}>{review.author}</span>
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold" style={{ color: review.status === "Sudah Direview" ? "var(--color-success)" : "#9a6a16" }}>
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: "currentColor" }} />
-                    {review.status}
-                  </span>
-                </span>
-                <span className="self-center text-xl leading-none" style={{ color: "var(--color-text-muted)" }} aria-hidden="true">›</span>
-              </button>
-            ))}
-          </div>
-        </aside>
-        <main className="space-y-6">
-          <section className="card p-6"><div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5"><div><div className="text-xs mb-2" style={{ color: "var(--color-text-muted)" }}>Detail Review</div><h2 className="text-xl font-bold">{selectedReview.title}</h2><p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>Penulis: {selectedReview.author}</p></div><span className="badge">{selectedReview.status}</span></div><div className="grid sm:grid-cols-2 gap-4 text-sm"><div><span style={{ color: "var(--color-text-muted)" }}>Dikirim</span><div className="font-medium mt-1">{selectedReview.submittedAt}</div></div><div><span style={{ color: "var(--color-text-muted)" }}>Deadline review</span><div className="font-medium mt-1">{selectedReview.deadline}</div></div></div></section>
-          <section className="grid lg:grid-cols-2 gap-6"><DocumentCard document={selectedReview.before} tone="before" /><DocumentCard document={selectedReview.after} tone="after" /></section>
-          <section className="card p-6"><div className="flex items-center justify-between mb-5"><div><h2 className="font-semibold">Komentar Review</h2><p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>{selectedReview.comments.length} komentar</p></div><span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Sementara di localStorage</span></div><div className="space-y-4 mb-6">{selectedReview.comments.map((item) => <div key={item.id} className="p-4 rounded-lg" style={{ background: "var(--color-bg)" }}><div className="flex items-center justify-between gap-3 mb-2"><span className="text-sm font-semibold">{item.author}</span><span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{item.createdAt}</span></div><p className="text-sm leading-6">{item.text}</p></div>)}{!selectedReview.comments.length && <p className="text-sm py-3" style={{ color: "var(--color-text-muted)" }}>Belum ada komentar untuk naskah ini.</p>}</div><form onSubmit={submitComment} className="space-y-3"><label className="block text-sm font-medium">Tambah komentar</label><textarea className={`input-base min-h-28 ${commentError ? "error" : ""}`} value={comment} onChange={(event) => { setComment(event.target.value); setCommentError(""); }} placeholder="Tuliskan catatan revisi untuk penulis..." />{commentError && <p className="text-xs" style={{ color: "var(--color-danger)" }}>{commentError}</p>}<div className="flex justify-end"><button type="submit" className="btn-primary">Simpan Komentar</button></div></form></section>
-        </main>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold mb-1">Review Naskah</h1>
+        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+          Detail naskah dan deadline review untuk naskah yang ditugaskan kepada Anda.
+        </p>
       </div>
+      <main className="space-y-6">
+        <section className="card p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold">{selectedReview.title}</h2>
+              <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>Penulis: {selectedReview.author}</p>
+            </div>
+            <span className="badge">{selectedReview.status}</span>
+          </div>
+          <details open>
+            <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--color-primary)" }}>Detail lengkap</summary>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-x-6">
+              <InfoRow label="Judul Naskah" value={selectedReview.title} className="font-semibold md:col-span-3" />
+              <InfoRow label="Sinopsis" value={selectedReview.synopsis} className="md:col-span-3" />
+            </div>
+            <div className="naskah-meta mb-6" aria-label="Metadata naskah">
+              <ReviewMeta label="Status" value={selectedReview.status} status />
+              <ReviewMeta label="Jenis buku" value={selectedReview.bookType} />
+              {(selectedReview.targets.length ? selectedReview.targets : ["-"]).map((target, index) => <ReviewMeta key={`${target}-${index}`} label="Target" value={target} />)}
+              <ReviewMeta label="Warna isi" value={selectedReview.interiorColor} />
+              <ReviewMeta label="Status cover" value={selectedReview.coverStatus} />
+              <ReviewMeta label="Editor pribadi" value={selectedReview.personalEditor} />
+            </div>
+          </details>
+          <div className="grid sm:grid-cols-3 gap-4 text-sm border-t pt-4" style={{ borderColor: "var(--color-border)" }}>
+            <div><span style={{ color: "var(--color-text-muted)" }}>Dikirim</span><div className="font-medium mt-1">{selectedReview.submittedAt}</div></div>
+            <div><span style={{ color: "var(--color-text-muted)" }}>Deadline review</span><div className="font-medium mt-1">{selectedReview.deadline}</div></div>
+            <div><span style={{ color: "var(--color-text-muted)" }}>Status review</span><div className="font-medium mt-1">{selectedReview.status}</div></div>
+          </div>
+        </section>
+        <section className="grid lg:grid-cols-2 gap-6"><DocumentCard document={selectedReview.before} tone="before" /><DocumentCard document={selectedReview.after} tone="after" /></section>
+        <section className="card p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="font-semibold">Komentar Review</h2>
+              <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>{selectedReview.comments.length} komentar</p>
+            </div>
+            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Sementara di localStorage</span>
+          </div>
+          <div className="space-y-4 mb-6">
+            {selectedReview.comments.map((item) => (
+              <div key={item.id} className="p-4 rounded-lg" style={{ background: "var(--color-bg)" }}>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <span className="text-sm font-semibold">{item.author}</span>
+                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{item.createdAt}</span>
+                </div>
+                <p className="text-sm leading-6">{item.text}</p>
+              </div>
+            ))}
+            {!selectedReview.comments.length && <p className="text-sm py-3" style={{ color: "var(--color-text-muted)" }}>Belum ada komentar untuk naskah ini.</p>}
+          </div>
+          <form onSubmit={submitComment} className="space-y-3">
+            <label className="block text-sm font-medium">Tambah komentar</label>
+            <textarea
+              className={`input-base min-h-28 ${commentError ? "error" : ""}`}
+              value={comment}
+              onChange={(event) => { setComment(event.target.value); setCommentError(""); }}
+              placeholder="Tuliskan catatan revisi untuk penulis..."
+            />
+            {commentError && <p className="text-xs" style={{ color: "var(--color-danger)" }}>{commentError}</p>}
+            <div className="flex justify-end"><button type="submit" className="btn-primary">Simpan Komentar</button></div>
+          </form>
+        </section>
+      </main>
     </div>
   );
+}
+
+function InfoRow({ label, value, className = "" }: { label: string; value?: string; className?: string }) {
+  return <div className={`py-3 border-b ${className}`} style={{ borderColor: "var(--color-border)" }}><span className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>{label}</span><span className="block text-sm">{value || "-"}</span></div>;
+}
+
+function ReviewMeta({ label, value, status = false }: { label: string; value: string; status?: boolean }) {
+  return <div className={`naskah-meta-item ${status ? "naskah-meta-status" : ""}`}><span className="naskah-meta-label">{label}</span><span className="naskah-meta-value">{value || "-"}</span></div>;
 }
 
 function DocumentCard({ document, tone }: { document: ReviewDocument; tone: "before" | "after" }) {

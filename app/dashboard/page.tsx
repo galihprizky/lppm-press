@@ -2,8 +2,9 @@
 // src/app/dashboard/page.tsx
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ApiListResponse, Naskah } from "@/app/dashboard/naskah/types";
-import { API_URL } from "@/lib/config";
+import { Naskah } from "@/app/dashboard/naskah/types";
+import { DashboardRole, fetchDashboardData } from "@/lib/dashboard";
+import { getActiveRole } from "@/lib/storage";
 
 interface StatCard {
   label: string;
@@ -14,19 +15,25 @@ interface StatCard {
 
 export default function DashboardPage() {
   const [naskah, setNaskah] = useState<Naskah[]>([]);
+  const [activeRole, setActiveRole] = useState<DashboardRole>("LPPM");
 
   useEffect(() => {
-    const fetchNaskah = async () => {
+    const loadDashboard = async () => {
+      const storedRole = getActiveRole()?.trim().toUpperCase() as DashboardRole | undefined;
+      const role: DashboardRole = storedRole && ["LPPM", "AUTHOR", "USER", "REVIEWER", "EDITOR"].includes(storedRole)
+        ? storedRole
+        : "LPPM";
+      setActiveRole(role);
+
       try {
-        const response = await fetch(`${API_URL}/naskah`);
-        const json: ApiListResponse<Naskah> = await response.json();
-        setNaskah(Array.isArray(json.data) ? json.data : []);
+        const data = await fetchDashboardData({ role, userId: localStorage.getItem("user_id") });
+        setNaskah(data.naskah);
       } catch {
         setNaskah([]);
       }
     };
 
-    fetchNaskah();
+    void loadDashboard();
   }, []);
 
   const recentNaskah = [...naskah]
@@ -52,7 +59,7 @@ export default function DashboardPage() {
           Selamat datang, 👋
         </h1>
         <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Ini ringkasan pengajuan naskah hari ini.
+          Ringkasan pengajuan naskah untuk role {activeRole}.
         </p>
       </div>
 

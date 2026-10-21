@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ApiListResponse, canEditNaskah, canManageNaskah, Naskah, JENIS_BUKU_OPTIONS, STATUS_SAAT_INI_OPTIONS } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
 import { getActiveRole } from "@/lib/storage";
+import { fetchReviewerNaskahList } from "@/lib/reviewer";
 
 const PAGE_SIZE = 5;
 
@@ -24,6 +25,7 @@ export default function NaskahPage() {
   const [canAuthorEdit, setCanAuthorEdit] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [isLppm, setIsLppm] = useState(false);
+  const [isReviewer, setIsReviewer] = useState(false);
   const [userId, setUserId] = useState("");
 
   const fetchNaskah = async (pengusulId: string, lppm: boolean) => {
@@ -41,11 +43,26 @@ export default function NaskahPage() {
     }
   };
 
+  const fetchReviewerNaskah = async (reviewerId: string) => {
+    setLoading(true);
+    setServerError("");
+    try {
+      const assigned = await fetchReviewerNaskahList(Number(reviewerId));
+      setItems(assigned.map(({ naskah }) => naskah));
+    } catch {
+      setServerError("Tidak bisa memuat data naskah reviewer.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const userId = localStorage.getItem("user_id");
     const activeRole = getActiveRole()?.trim().toUpperCase();
     const lppm = activeRole === "LPPM";
+    const reviewer = activeRole === "REVIEWER";
     setIsLppm(lppm);
+    setIsReviewer(reviewer);
     setCanAuthorEdit(activeRole === "AUTHOR");
     setCanManage(canManageNaskah(activeRole));
     setUserId(userId ?? "");
@@ -56,7 +73,11 @@ export default function NaskahPage() {
       return;
     }
 
-    fetchNaskah(userId, lppm);
+    if (reviewer) {
+      fetchReviewerNaskah(userId);
+    } else {
+      fetchNaskah(userId, lppm);
+    }
   }, []);
 
   const filteredAndSorted = useMemo(() => {
@@ -274,6 +295,7 @@ export default function NaskahPage() {
                     <td className="px-4 py-3.5">
                       <div className="flex items-center justify-end gap-2">
                         <Link href={`/dashboard/naskah/${n.id}`} className="btn-detail">Detail</Link>
+                        {isReviewer && <Link href={`/dashboard/review-naskah/${n.id}`} className="btn-primary">Review</Link>}
                         {((isLppm || (canAuthorEdit && userId === String(n.pengusul_id))) && canEditNaskah(n.status_saat_ini)) && (
                           <Link href={`/dashboard/naskah/${n.id}/edit`} className="btn-edit">Edit</Link>
                         )}

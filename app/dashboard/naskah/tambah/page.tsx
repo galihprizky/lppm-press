@@ -1,14 +1,15 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  JENIS_BUKU_OPTIONS,
+  MAX_NASKAH_FILE_SIZE,
   NaskahForm,
   STATUS_COVER_OPTIONS,
   TARGET_PEMBACA_OPTIONS,
   toApiTargetPembaca,
+  VISIBLE_JENIS_BUKU_OPTIONS,
   WARNA_ISI_OPTIONS,
 } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
@@ -131,8 +132,19 @@ export default function TambahNaskahPage() {
   };
 
   const handleFile = (key: "file_draft_naskah" | "file_profile_penulis" | "file_surat_keaslian", file: File | null) => {
+    if (file && file.size > MAX_NASKAH_FILE_SIZE) {
+      setForm((prev) => ({ ...prev, [key]: null }));
+      setErrors((prev) => ({ ...prev, [key]: "Ukuran file melebihi batas maksimal 50 MB." }));
+      return;
+    }
+
     setForm((prev) => ({ ...prev, [key]: file }));
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: "" }));
+  };
+
+  const handleFileInput = (event: ChangeEvent<HTMLInputElement>, key: "file_draft_naskah" | "file_profile_penulis" | "file_surat_keaslian") => {
+    handleFile(key, event.target.files?.[0] ?? null);
+    if (event.target.files?.[0] && event.target.files[0].size > MAX_NASKAH_FILE_SIZE) event.target.value = "";
   };
 
   return (
@@ -159,7 +171,7 @@ export default function TambahNaskahPage() {
                 onChange={(e) => update("jenis_buku", e.target.value)}
               >
                 <option value="">Pilih jenis buku...</option>
-                {JENIS_BUKU_OPTIONS.map((item) => (
+                {VISIBLE_JENIS_BUKU_OPTIONS.map((item) => (
                   <option key={item} value={item}>{item}</option>
                 ))}
               </select>
@@ -270,8 +282,9 @@ export default function TambahNaskahPage() {
                 type="file"
                 accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png"
                 className={`input-base ${errors.file_draft_naskah ? "error" : ""}`}
-                onChange={(e) => handleFile("file_draft_naskah", e.target.files?.[0] ?? null)}
+                onChange={(e) => handleFileInput(e, "file_draft_naskah")}
               />
+              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>Maksimal ukuran file 50 MB</p>
               {errors.file_draft_naskah && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_draft_naskah}</p>}
             </div>
 
@@ -281,8 +294,9 @@ export default function TambahNaskahPage() {
                 type="file"
                 accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png"
                 className={`input-base ${errors.file_profile_penulis ? "error" : ""}`}
-                onChange={(e) => handleFile("file_profile_penulis", e.target.files?.[0] ?? null)}
+                onChange={(e) => handleFileInput(e, "file_profile_penulis")}
               />
+              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>Maksimal ukuran file 50 MB</p>
               {errors.file_profile_penulis && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_profile_penulis}</p>}
             </div>
 
@@ -292,8 +306,9 @@ export default function TambahNaskahPage() {
                 type="file"
                 accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png"
                 className={`input-base ${errors.file_surat_keaslian ? "error" : ""}`}
-                onChange={(e) => handleFile("file_surat_keaslian", e.target.files?.[0] ?? null)}
+                onChange={(e) => handleFileInput(e, "file_surat_keaslian")}
               />
+              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>Maksimal ukuran file 50 MB</p>
               {errors.file_surat_keaslian && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_surat_keaslian}</p>}
             </div>
           </div>

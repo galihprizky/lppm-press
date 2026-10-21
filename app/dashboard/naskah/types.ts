@@ -48,6 +48,8 @@ export const JENIS_BUKU_OPTIONS = [
   "Monograf",
   "Modul",
 ] as const;
+export const VISIBLE_JENIS_BUKU_OPTIONS = JENIS_BUKU_OPTIONS.filter((item) => item === "Buku Referensi" || item === "Buku Ajar");
+export const MAX_NASKAH_FILE_SIZE = 50 * 1024 * 1024;
 export const WARNA_ISI_OPTIONS = ["Hitam Putih", "Berwarna"] as const;
 export const STATUS_COVER_OPTIONS = ["Sudah", "Belum"] as const;
 export const STATUS_SAAT_INI_OPTIONS = ["SUBMITTED", "REVIEW", "REVISI", "APPROVED"] as const;
