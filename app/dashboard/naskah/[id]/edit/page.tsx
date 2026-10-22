@@ -269,21 +269,18 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
               <input type="file" accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png" className={`input-base ${errors.file_draft_naskah ? "error" : ""}`} onChange={(e) => handleFileInput(e, "file_draft_naskah")} />
               <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>Maksimal ukuran file 50 MB</p>
               {errors.file_draft_naskah && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_draft_naskah}</p>}
-              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>PDF, Word, atau gambar. Kosongkan jika tidak diubah.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1.5">File Profil Penulis</label>
               <input type="file" accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png" className={`input-base ${errors.file_profile_penulis ? "error" : ""}`} onChange={(e) => handleFileInput(e, "file_profile_penulis")} />
               <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>Maksimal ukuran file 50 MB</p>
               {errors.file_profile_penulis && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_profile_penulis}</p>}
-              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>PDF, Word, atau gambar. Kosongkan jika tidak diubah.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1.5">File Surat Keaslian</label>
               <input type="file" accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,image/jpeg,.jpg,.jpeg,image/png,.png" className={`input-base ${errors.file_surat_keaslian ? "error" : ""}`} onChange={(e) => handleFileInput(e, "file_surat_keaslian")} />
               <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>Maksimal ukuran file 50 MB</p>
               {errors.file_surat_keaslian && <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{errors.file_surat_keaslian}</p>}
-              <p className="mt-1 text-xs" style={{ color: "var(--color-text-muted)" }}>PDF, Word, atau gambar. Kosongkan jika tidak diubah.</p>
             </div>
           </div>
 

@@ -11,6 +11,17 @@ const PAGE_SIZE = 5;
 
 type SortOrder = "asc" | "desc";
 
+const statusColors: Record<string, { background: string; color: string; border: string }> = {
+  SUBMITTED: { background: "#e8f4fd", color: "#1565c0", border: "#b9dcf7" },
+  REVIEW: { background: "#fef9e7", color: "#b7770d", border: "#f2dda1" },
+  UNDER_REVIEW: { background: "#fef9e7", color: "#b7770d", border: "#f2dda1" },
+  REVISI: { background: "#fdf2f8", color: "#8e44ad", border: "#e7c5e9" },
+  REVISION_REQUIRED: { background: "#fdf2f8", color: "#8e44ad", border: "#e7c5e9" },
+  APPROVED: { background: "#eafaf1", color: "#1e8449", border: "#b8d9c3" },
+  PUBLISHED: { background: "#eafaf1", color: "#1e8449", border: "#b8d9c3" },
+  REJECTED: { background: "#fdf0ee", color: "#c0392b", border: "#f1c2bd" },
+};
+
 export default function NaskahPage() {
   const [items, setItems] = useState<Naskah[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,6 +161,7 @@ export default function NaskahPage() {
       return acc;
     }, []);
 
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -187,6 +199,7 @@ export default function NaskahPage() {
           {serverError}
         </div>
       )}
+
 
       <div className="card overflow-hidden">
         <div className="p-4 border-b space-y-3" style={{ borderColor: "var(--color-border)" }}>
@@ -257,8 +270,8 @@ export default function NaskahPage() {
                 <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Judul</th>
                 <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider hidden md:table-cell" style={{ color: "var(--color-text-muted)" }}>Penulis</th>
                 <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--color-text-muted)" }}>Jenis</th>
-                <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Status</th>
-                <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Aksi</th>
+                <th className="text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Status</th>
+                <th className="text-center px-4 py-3 font-semibold text-xs uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -281,19 +294,24 @@ export default function NaskahPage() {
                     style={{ borderBottom: i < paginated.length - 1 ? "1px solid var(--color-border)" : "none" }}
                     className="hover:bg-[var(--color-bg)] transition-colors"
                   >
-                    <td className="px-4 py-3.5">
+                    <td className="px-4 py-3.5 text-left">
                       <div className="font-medium">{n.judul_naskah}</div>
                       <div className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
                         Target: {(n.target_pembaca ?? []).join(", ") || "-"}
                       </div>
                     </td>
-                    <td className="px-4 py-3.5 hidden md:table-cell">{n.nama_semua_penulis || "-"}</td>
-                    <td className="px-4 py-3.5 hidden lg:table-cell">{n.jenis_buku || "-"}</td>
-                    <td className="px-4 py-3.5">
-                      <span className="badge">{n.status_saat_ini || "-"}</span>
+                    <td className="px-4 py-3.5 text-left hidden md:table-cell">{n.nama_semua_penulis || "-"}</td>
+                    <td className="px-4 py-3.5 text-left hidden lg:table-cell">{n.jenis_buku || "-"}</td>
+                    <td className="px-4 py-3.5 text-center">
+                      <span
+                        className="badge"
+                        style={statusColors[n.status_saat_ini] || undefined}
+                      >
+                        {n.status_saat_ini || "-"}
+                      </span>
                     </td>
-                    <td className="px-4 py-3.5">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="px-4 py-3.5 text-center">
+                      <div className="flex items-center justify-center gap-2">
                         <Link href={`/dashboard/naskah/${n.id}`} className="btn-detail">Detail</Link>
                         {isReviewer && <Link href={`/dashboard/review-naskah/${n.id}`} className="btn-primary">Review</Link>}
                         {((isLppm || (canAuthorEdit && userId === String(n.pengusul_id))) && canEditNaskah(n.status_saat_ini)) && (
