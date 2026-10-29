@@ -13,6 +13,20 @@ export interface Naskah {
   created_at?: string;
   file_draft_naskah?: string | null;
   file_draft_naskah_revisi?: string | null;
+  file_profile_penulis?: string | null;
+  file_surat_keaslian?: string | null;
+  versi_naskah?: NaskahVersion[];
+  hasil_review?: unknown[];
+}
+
+export interface NaskahVersion {
+  id?: number;
+  tahap?: string;
+  versi_ke?: number;
+  file_draft_naskah?: string | null;
+  file_draft_naskah_revisi?: string | null;
+  file_profile_penulis?: string | null;
+  file_surat_keaslian?: string | null;
 }
 
 export interface NaskahForm {
@@ -52,12 +66,57 @@ export const VISIBLE_JENIS_BUKU_OPTIONS = JENIS_BUKU_OPTIONS.filter((item) => it
 export const MAX_NASKAH_FILE_SIZE = 50 * 1024 * 1024;
 export const WARNA_ISI_OPTIONS = ["Hitam Putih", "Berwarna"] as const;
 export const STATUS_COVER_OPTIONS = ["Sudah", "Belum"] as const;
-export const STATUS_SAAT_INI_OPTIONS = ["SUBMITTED", "REVIEW", "REVISI", "APPROVED"] as const;
+export const STATUS_SAAT_INI_OPTIONS = [
+  "SUBMITTED",
+  "UNDER_REVIEW",
+  "REVISION_REQUIRED",
+  "PUBLISHED",
+  "REJECTED",
+] as const;
 
-export const EDITABLE_NASKAH_STATUSES = ["SUBMITTED", "REVISI"] as const;
+export const EDITABLE_NASKAH_STATUSES = ["SUBMITTED", "REVISION_REQUIRED", "REJECTED", "DITOLAK"] as const;
+
+export function formatStatusLabel(status?: string | null): string {
+  if (!status) return "-";
+  return status
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+export interface StatusColors {
+  background: string;
+  color: string;
+  borderColor: string;
+}
+
+export function getStatusColors(status?: string | null): StatusColors | undefined {
+  const normalizedStatus = status?.trim().toUpperCase();
+  if (!normalizedStatus) return undefined;
+
+  if (["REJECTED", "DITOLAK"].includes(normalizedStatus)) {
+    return { background: "#fdf0ee", color: "#c0392b", borderColor: "#f1c2bd" };
+  }
+  if (["REVISION_REQUIRED", "REVISI", "REVISI_MINOR", "REVISI_MAYOR", "REVISI_MAJOR"].includes(normalizedStatus)) {
+    return { background: "#fff4df", color: "#b36b00", borderColor: "#f2d39a" };
+  }
+  if (["APPROVED", "PUBLISHED", "DITERIMA"].includes(normalizedStatus)) {
+    return { background: "#eafaf1", color: "#1e8449", borderColor: "#b8d9c3" };
+  }
+  if (["REVIEW", "UNDER_REVIEW"].includes(normalizedStatus)) {
+    return { background: "#fef9e7", color: "#b7770d", borderColor: "#f2dda1" };
+  }
+  return { background: "#e8f4fd", color: "#1565c0", borderColor: "#b9dcf7" };
+}
 
 export function canEditNaskah(status: string | null | undefined): boolean {
   return EDITABLE_NASKAH_STATUSES.includes(status as (typeof EDITABLE_NASKAH_STATUSES)[number]);
+}
+
+export function canUploadRevision(status: string | null | undefined): boolean {
+  const normalizedStatus = status?.trim().toUpperCase();
+  return normalizedStatus === "REVISION_REQUIRED" || normalizedStatus === "REVISI";
 }
 
 export function canManageNaskah(role: string | null | undefined): boolean {

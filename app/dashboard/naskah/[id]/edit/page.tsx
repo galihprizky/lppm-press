@@ -1,10 +1,9 @@
 "use client";
 
-import { ChangeEvent, FormEvent, use, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  ApiListResponse,
   canManageNaskah,
   canEditNaskah,
   MAX_NASKAH_FILE_SIZE,
@@ -16,6 +15,7 @@ import {
   VISIBLE_JENIS_BUKU_OPTIONS,
   WARNA_ISI_OPTIONS,
 } from "@/app/dashboard/naskah/types";
+import { ApiResponse } from "@/app/dashboard/users/types";
 import { API_URL } from "@/lib/config";
 import { getActiveRole } from "@/lib/storage";
 
@@ -40,6 +40,7 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
 
   const [form, setForm] = useState<NaskahForm>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
+  const formRef = useRef<HTMLFormElement>(null);
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -51,13 +52,12 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
       setFetching(true);
       setServerError("");
       try {
-        const res = await fetch(`${API_URL}/naskah`);
-        const json: ApiListResponse<Naskah> = await res.json();
-        const list = Array.isArray(json?.data) ? json.data : [];
-        const found = list.find((x) => String(x.id) === id);
+        const res = await fetch(`${API_URL}/naskah/${id}`);
+        const json: ApiResponse<Naskah> = await res.json();
+        const found = res.ok ? json.data : null;
 
         if (!found) {
-          setServerError("Data naskah tidak ditemukan.");
+          setServerError(json.message || "Data naskah tidak ditemukan.");
           return;
         }
 
@@ -133,25 +133,20 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
         pake_editor_pribadi: form.pake_editor_pribadi,
         status_cover: form.status_cover,
       };
-      const hasFiles = Boolean(file_draft_naskah || file_profile_penulis || file_surat_keaslian);
-      const requestBody = hasFiles ? new FormData() : JSON.stringify(payload);
-
-      if (requestBody instanceof FormData) {
-        Object.entries(payload).forEach(([key, value]) => {
-          if (Array.isArray(value)) {
-            value.forEach((item) => requestBody.append(`${key}[]`, item));
-          } else {
-            requestBody.append(key, String(value));
-          }
-        });
-        if (file_draft_naskah) requestBody.append("file_draft_naskah", file_draft_naskah);
-        if (file_profile_penulis) requestBody.append("file_profile_penulis", file_profile_penulis);
-        if (file_surat_keaslian) requestBody.append("file_surat_keaslian", file_surat_keaslian);
-      }
+      const requestBody = new FormData();
+      Object.entries(payload).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          value.forEach((item) => requestBody.append(`${key}[]`, item));
+        } else {
+          requestBody.append(key, String(value));
+        }
+      });
+      if (file_draft_naskah) requestBody.append("file_draft_naskah", file_draft_naskah);
+      if (file_profile_penulis) requestBody.append("file_profile_penulis", file_profile_penulis);
+      if (file_surat_keaslian) requestBody.append("file_surat_keaslian", file_surat_keaslian);
 
       const res = await fetch(`${API_URL}/naskah/${id}`, {
         method: "PUT",
-        ...(requestBody instanceof FormData ? {} : { headers: { "Content-Type": "application/json" } }),
         body: requestBody,
       });
 
@@ -169,6 +164,7 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
         return;
       }
 
+      formRef.current?.querySelectorAll<HTMLInputElement>('input[type="file"]').forEach((input) => { input.value = ""; });
       router.push("/dashboard/naskah");
     } catch {
       setServerError("Tidak bisa terhubung ke server.");
@@ -245,7 +241,7 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
       )}
 
       <div className="card p-6">
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-5" noValidate>
           <div className="grid sm:grid-cols-2 gap-5">
             <div>
               <label className="block text-sm font-medium mb-1.5">Jenis Buku</label>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ApiListResponse, canEditNaskah, canManageNaskah, Naskah, JENIS_BUKU_OPTIONS, STATUS_SAAT_INI_OPTIONS } from "@/app/dashboard/naskah/types";
+import { ApiListResponse, canEditNaskah, canManageNaskah, formatStatusLabel, getStatusColors, Naskah, JENIS_BUKU_OPTIONS, STATUS_SAAT_INI_OPTIONS } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
 import { getActiveRole } from "@/lib/storage";
 import { fetchReviewerNaskahList } from "@/lib/reviewer";
@@ -10,17 +10,6 @@ import { fetchReviewerNaskahList } from "@/lib/reviewer";
 const PAGE_SIZE = 5;
 
 type SortOrder = "asc" | "desc";
-
-const statusColors: Record<string, { background: string; color: string; border: string }> = {
-  SUBMITTED: { background: "#e8f4fd", color: "#1565c0", border: "#b9dcf7" },
-  REVIEW: { background: "#fef9e7", color: "#b7770d", border: "#f2dda1" },
-  UNDER_REVIEW: { background: "#fef9e7", color: "#b7770d", border: "#f2dda1" },
-  REVISI: { background: "#fdf2f8", color: "#8e44ad", border: "#e7c5e9" },
-  REVISION_REQUIRED: { background: "#fdf2f8", color: "#8e44ad", border: "#e7c5e9" },
-  APPROVED: { background: "#eafaf1", color: "#1e8449", border: "#b8d9c3" },
-  PUBLISHED: { background: "#eafaf1", color: "#1e8449", border: "#b8d9c3" },
-  REJECTED: { background: "#fdf0ee", color: "#c0392b", border: "#f1c2bd" },
-};
 
 export default function NaskahPage() {
   const [items, setItems] = useState<Naskah[]>([]);
@@ -171,13 +160,15 @@ export default function NaskahPage() {
             {items.length} naskah terdaftar
           </p>
         </div>
-        <Link href="/dashboard/naskah/tambah" className="btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Ajukan Naskah
-        </Link>
+        {canAuthorEdit && (
+          <Link href="/dashboard/naskah/tambah" className="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Ajukan Naskah
+          </Link>
+        )}
       </div>
 
       {successMsg && (
@@ -227,7 +218,7 @@ export default function NaskahPage() {
             >
               <option value="">Semua Jenis Buku</option>
               {JENIS_BUKU_OPTIONS.map((item) => (
-                <option key={item} value={item}>{item}</option>
+                <option key={item} value={item}>{formatStatusLabel(item)}</option>
               ))}
             </select>
 
@@ -305,9 +296,9 @@ export default function NaskahPage() {
                     <td className="px-4 py-3.5 text-center">
                       <span
                         className="badge"
-                        style={statusColors[n.status_saat_ini] || undefined}
+                        style={getStatusColors(n.status_saat_ini)}
                       >
-                        {n.status_saat_ini || "-"}
+                        {formatStatusLabel(n.status_saat_ini)}
                       </span>
                     </td>
                     <td className="px-4 py-3.5 text-center">

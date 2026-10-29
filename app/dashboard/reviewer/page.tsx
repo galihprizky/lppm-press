@@ -2,6 +2,9 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { fetchReviewerNaskahList } from "@/lib/reviewer";
+import { API_URL } from "@/lib/config";
+import { getNaskahDocument } from "@/lib/documents";
+import { getActiveRole } from "@/lib/storage";
 
 interface ReviewDocument {
   label: string;
@@ -34,9 +37,10 @@ interface ReviewSubmission {
   before: ReviewDocument;
   after: ReviewDocument;
   comments: ReviewComment[];
+  assignmentId?: number;
+  reviewerId?: number;
+  assignmentStatus?: string;
 }
-
-const REVIEW_STORAGE_KEY = "reviewer_comments_draft";
 
 function displayText(value: unknown): string {
   if (typeof value === "string" || typeof value === "number") return String(value);
@@ -77,9 +81,9 @@ function normalizeComments(value: unknown): ReviewComment[] {
     const comment = item && typeof item === "object" ? item as Record<string, unknown> : {};
     return {
       id: typeof comment.id === "number" ? comment.id : Date.now() + index,
-      author: displayText(comment.author),
-      text: displayText(comment.text),
-      createdAt: displayText(comment.createdAt),
+      author: displayText(comment.nama_reviewer ?? comment.reviewer ?? comment.author) || "Reviewer",
+      text: displayText(comment.catatan_review ?? comment.text),
+      createdAt: displayText(comment.created_at ?? comment.createdAt),
     };
   });
 }
@@ -90,6 +94,7 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
   const [loadError, setLoadError] = useState("");
   const [comment, setComment] = useState("");
   const [commentError, setCommentError] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   useEffect(() => {
     const loadAssignedReviews = async () => {
@@ -116,9 +121,12 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
           submittedAt: formatDate(naskah.created_at),
           deadline: formatDate(assignment.deadline_review),
           status: reviewStatus(naskah.status_saat_ini),
-          before: documentFrom(naskah.file_draft_naskah, "Dokumen sebelum revisi", "Versi 1"),
-          after: documentFrom(naskah.file_draft_naskah_revisi, "Dokumen setelah revisi", "Versi revisi"),
-          comments: [],
+          before: documentFrom(getNaskahDocument(naskah, "file_draft_naskah"), "Dokumen sebelum revisi", "Versi 1"),
+          after: documentFrom(getNaskahDocument(naskah, "file_draft_naskah_revisi"), "Dokumen setelah revisi", "Versi revisi"),
+          comments: normalizeComments(naskah.hasil_review),
+          assignmentId: assignment.id,
+          reviewerId: assignment.reviewer_id,
+          assignmentStatus: assignment.status_penugasan,
         }));
         setReviews(nextReviews);
       } catch (error) {
@@ -131,40 +139,65 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
     void loadAssignedReviews();
   }, []);
 
-  useEffect(() => {
-    const stored = localStorage.getItem(REVIEW_STORAGE_KEY);
-    if (!stored) return;
-    try {
-      const savedComments: Record<number, unknown> = JSON.parse(stored);
-      setReviews((current) => current.map((review) => ({
-        ...review,
-        comments: savedComments[review.id] ? normalizeComments(savedComments[review.id]) : review.comments,
-      })));
-    } catch {
-      localStorage.removeItem(REVIEW_STORAGE_KEY);
-    }
-  }, []);
-
   const selectedReview = reviews.find((review) => String(review.id) === reviewId) ?? reviews[0];
 
-  const submitComment = (event: FormEvent) => {
+  const submitComment = async (event: FormEvent) => {
     event.preventDefault();
     if (!selectedReview) return;
     if (!comment.trim()) {
       setCommentError("Komentar wajib diisi.");
       return;
     }
-    const nextComment: ReviewComment = {
-      id: Date.now(),
-      author: "Saya",
-      text: comment.trim(),
-      createdAt: new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date()),
-    };
-    const nextReviews = reviews.map((review) => review.id === selectedReview.id ? { ...review, comments: [...review.comments, nextComment] } : review);
-    localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(Object.fromEntries(nextReviews.map((review) => [review.id, review.comments]))));
-    setReviews(nextReviews);
-    setComment("");
-    setCommentError("");
+    if (!selectedReview.assignmentId || !selectedReview.reviewerId) {
+      setCommentError("Penugasan reviewer tidak ditemukan.");
+      return;
+    }
+
+    setSubmittingComment(true);
+    try {
+      const formData = new FormData();
+      formData.append("penugasan_id", String(selectedReview.assignmentId));
+      formData.append("reviewer_id", String(selectedReview.reviewerId));
+      formData.append("rekomendasi", "REVISI_MINOR");
+      formData.append("catatan_review", comment.trim());
+
+      const response = await fetch(`${API_URL}/hasil-review`, { method: "POST", body: formData });
+      const payload: { message?: string } = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || "Gagal menyimpan komentar.");
+
+      const nextComment: ReviewComment = {
+        id: Date.now(),
+        author: "Saya",
+        text: comment.trim(),
+        createdAt: new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date()),
+      };
+      setReviews((current) => current.map((review) => review.id === selectedReview.id ? { ...review, comments: [...review.comments, nextComment] } : review));
+      setComment("");
+      setCommentError("");
+    } catch (error) {
+      setCommentError(error instanceof Error ? error.message : "Gagal menyimpan komentar.");
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const acceptAssignment = async () => {
+    if (!selectedReview?.assignmentId) return;
+    try {
+      const response = await fetch(`${API_URL}/penugasan-reviewer/${selectedReview.assignmentId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewer_id: selectedReview.reviewerId, status_penugasan: "ACCEPTED" }),
+      });
+      const payload: { message?: string; error?: string; errors?: Record<string, string[]> } = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const validationError = payload.errors ? Object.values(payload.errors).flat().join(" ") : "";
+        throw new Error(payload.message || payload.error || validationError || `Gagal menerima penugasan reviewer (${response.status}).`);
+      }
+      setReviews((current) => current.map((review) => review.id === selectedReview.id ? { ...review, assignmentStatus: "ACCEPTED" } : review));
+    } catch (error) {
+      setCommentError(error instanceof Error ? error.message : "Gagal menerima penugasan reviewer.");
+    }
   };
 
   if (loading) return <div className="text-sm" style={{ color: "var(--color-text-muted)" }}>Memuat naskah yang ditugaskan...</div>;
@@ -188,6 +221,9 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
             </div>
             <span className="badge">{selectedReview.status}</span>
           </div>
+          {getActiveRole()?.trim().toUpperCase() === "REVIEWER" && selectedReview.assignmentStatus !== "ACCEPTED" && selectedReview.assignmentId && (
+            <button type="button" className="btn-secondary" onClick={acceptAssignment}>Terima Penugasan</button>
+          )}
           <details open>
             <summary className="cursor-pointer text-sm font-semibold" style={{ color: "var(--color-primary)" }}>Detail lengkap</summary>
             <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-x-6">
@@ -216,7 +252,7 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
               <h2 className="font-semibold">Komentar Review</h2>
               <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>{selectedReview.comments.length} komentar</p>
             </div>
-            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Sementara di localStorage</span>
+            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Data dari server</span>
           </div>
           <div className="space-y-4 mb-6">
             {selectedReview.comments.map((item) => (
@@ -239,7 +275,7 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
               placeholder="Tuliskan catatan revisi untuk penulis..."
             />
             {commentError && <p className="text-xs" style={{ color: "var(--color-danger)" }}>{commentError}</p>}
-            <div className="flex justify-end"><button type="submit" className="btn-primary">Simpan Komentar</button></div>
+            <div className="flex justify-end"><button type="submit" className="btn-primary" disabled={submittingComment}>{submittingComment ? "Menyimpan..." : "Simpan Komentar"}</button></div>
           </form>
         </section>
       </main>
@@ -252,7 +288,7 @@ function InfoRow({ label, value, className = "" }: { label: string; value?: stri
 }
 
 function ReviewMeta({ label, value, status = false }: { label: string; value: string; status?: boolean }) {
-  return <div className={`naskah-meta-item ${status ? "naskah-meta-status" : ""}`}><span className="naskah-meta-label">{label}</span><span className="naskah-meta-value">{value || "-"}</span></div>;
+  return <div className={`naskah-meta-item ${status ? "naskah-meta-status" : ""}`}><span className="naskah-meta-label">{label}</span><span className={`naskah-meta-value ${label === "Target" ? "naskah-meta-target" : ""}`}>{value || "-"}</span></div>;
 }
 
 function DocumentCard({ document, tone }: { document: ReviewDocument; tone: "before" | "after" }) {

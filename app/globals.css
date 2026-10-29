@@ -81,9 +81,25 @@ body {
 .input-base::placeholder {
   color: var(--color-text-muted);
 }
+.input-base[type="file"]::file-selector-button {
+  display: none;
+  width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.input-base[type="file"] {
+  appearance: none;
+  -webkit-appearance: none;
+}
 .input-base.error {
   border-color: var(--color-danger);
   box-shadow: 0 0 0 3px var(--color-danger-pale);
+}
+
+.deadline-summary {
+  font-size: 0.85rem;
+  line-height: 1.75rem;
 }
 
 /* Buttons */
@@ -231,7 +247,7 @@ body {
   min-height: 4.1rem;
   min-width: 0;
   padding: 0.7rem 0.8rem;
-  border: 1px solid var(--color-border);
+  border: 1.5px solid var(--color-border);
   border-radius: 8px;
   background: #fbfaf7;
   color: var(--color-text-muted);
@@ -250,6 +266,15 @@ body {
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.naskah-meta-target {
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 .naskah-meta-status {
   border-color: #b8d9c3;

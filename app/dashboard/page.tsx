@@ -2,7 +2,7 @@
 // src/app/dashboard/page.tsx
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Naskah } from "@/app/dashboard/naskah/types";
+import { formatStatusLabel, Naskah } from "@/app/dashboard/naskah/types";
 import { DashboardRole, fetchDashboardData } from "@/lib/dashboard";
 import { getActiveRole } from "@/lib/storage";
 
@@ -15,7 +15,7 @@ interface StatCard {
 
 export default function DashboardPage() {
   const [naskah, setNaskah] = useState<Naskah[]>([]);
-  const [activeRole, setActiveRole] = useState<DashboardRole>("LPPM");
+  const [activeRole, setActiveRole] = useState<DashboardRole | null>(null);
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -80,12 +80,14 @@ export default function DashboardPage() {
             Aksi Cepat
           </h2>
           <div className="space-y-3">
-            <Link href="/dashboard/naskah/tambah" className="btn-primary w-full justify-center">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Tambah Naskah
-            </Link>
+            {activeRole === "AUTHOR" && (
+              <Link href="/dashboard/naskah/tambah" className="btn-primary w-full justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Tambah Naskah
+              </Link>
+            )}
             <Link href="/dashboard/naskah" className="btn-secondary w-full justify-center">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 4h16v16H4z" /><path d="M8 8h8M8 12h8M8 16h5" />
@@ -116,7 +118,7 @@ export default function DashboardPage() {
               <div key={item.id} className="flex items-center justify-between gap-4 py-2 border-b last:border-0"
                 style={{ borderColor: "var(--color-border)" }}>
                 <div className="text-sm font-medium truncate">{item.judul_naskah}</div>
-                <span className="badge flex-shrink-0">{item.status_saat_ini || "-"}</span>
+                <span className="badge flex-shrink-0">{formatStatusLabel(item.status_saat_ini)}</span>
               </div>
             ))}
             {recentNaskah.length === 0 && (

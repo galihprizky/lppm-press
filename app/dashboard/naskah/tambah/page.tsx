@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -13,6 +13,7 @@ import {
   WARNA_ISI_OPTIONS,
 } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
+import { getActiveRole } from "@/lib/storage";
 
 type FormErrors = Partial<Record<keyof NaskahForm, string>>;
 
@@ -32,12 +33,50 @@ const INITIAL_FORM: NaskahForm = {
   file_surat_keaslian: null,
 };
 
+const SUBMIT_TIMEOUT_MS = 120_000;
+
+function friendlySubmitError(status?: number, message?: unknown): string {
+  const rawMessage = Array.isArray(message) ? message.join(" ") : typeof message === "string" ? message : "";
+  const normalizedMessage = rawMessage.toLowerCase();
+
+  if (normalizedMessage.includes("file") && (normalizedMessage.includes("size") || normalizedMessage.includes("besar"))) {
+    return "Ukuran file terlalu besar. Pastikan setiap file tidak lebih dari 50 MB.";
+  }
+  if (normalizedMessage.includes("format") || normalizedMessage.includes("type file") || normalizedMessage.includes("mimetype")) {
+    return "Format salah satu file belum didukung. Gunakan PDF, Word, JPG, JPEG, atau PNG.";
+  }
+  if (status === 400 || status === 422) {
+    return "Data pengajuan belum sesuai. Periksa kembali isian dan file yang diunggah.";
+  }
+  if (status === 401 || status === 403) {
+    return "Sesi login sudah tidak berlaku. Silakan login kembali lalu coba lagi.";
+  }
+  if (status === 413) {
+    return "Ukuran file terlalu besar untuk dikirim. Kurangi ukuran file lalu coba lagi.";
+  }
+  if (status && status >= 500) {
+    return "Layanan sedang mengalami kendala. Coba lagi beberapa saat kemudian.";
+  }
+  return "Pengajuan naskah belum berhasil dikirim. Periksa koneksi internet lalu coba lagi.";
+}
+
 export default function TambahNaskahPage() {
   const router = useRouter();
   const [form, setForm] = useState<NaskahForm>(INITIAL_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
+  const formRef = useRef<HTMLFormElement>(null);
   const [serverError, setServerError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
+  useEffect(() => {
+    if (getActiveRole()?.trim().toUpperCase() === "AUTHOR") {
+      setIsAuthorized(true);
+      return;
+    }
+    router.replace("/dashboard/naskah");
+  }, [router]);
 
   const validate = (): FormErrors => {
     const e: FormErrors = {};
@@ -54,6 +93,10 @@ export default function TambahNaskahPage() {
     return e;
   };
 
+  if (!isAuthorized) {
+    return <div className="text-sm" style={{ color: "var(--color-text-muted)" }}>Memuat halaman...</div>;
+  }
+
   const handleSubmit = async (ev: FormEvent) => {
     ev.preventDefault();
     const e = validate();
@@ -65,11 +108,12 @@ export default function TambahNaskahPage() {
     setErrors({});
     setServerError("");
     setLoading(true);
+    setLoadingMessage("Menyiapkan file untuk dikirim...");
 
     try {
       const userId = localStorage.getItem("user_id") ?? "";
       if (!userId || !/^\d+$/.test(userId)) {
-        setServerError("Sesi user tidak valid. Silakan logout lalu login kembali dengan akun Author.");
+        setServerError("Sesi login tidak ditemukan. Silakan login kembali sebagai Author lalu coba lagi.");
         return;
       }
       const { file_draft_naskah, file_profile_penulis, file_surat_keaslian, ...rest } = form;
@@ -90,32 +134,39 @@ export default function TambahNaskahPage() {
       if (file_profile_penulis) formData.append("file_profile_penulis", file_profile_penulis);
       if (file_surat_keaslian) formData.append("file_surat_keaslian", file_surat_keaslian);
 
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), SUBMIT_TIMEOUT_MS);
+      setLoadingMessage("Mengunggah naskah ke server...");
       const res = await fetch(`${API_URL}/naskah`, {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
+      window.clearTimeout(timeoutId);
 
       if (!res.ok) {
-        let message = "Gagal menyimpan pengajuan naskah.";
+        let apiMessage: unknown;
         try {
           const err = await res.json();
-          if (typeof err?.message === "string" && err.message) {
-            message = err.message;
-          } else if (Array.isArray(err?.message)) {
-            message = err.message.join(" ");
-          }
+          apiMessage = err?.message;
         } catch {
-          // ignore parse errors
+          apiMessage = undefined;
         }
-        setServerError(message);
+        setServerError(friendlySubmitError(res.status, apiMessage));
         return;
       }
 
+      formRef.current?.querySelectorAll<HTMLInputElement>('input[type="file"]').forEach((input) => { input.value = ""; });
       router.push("/dashboard/naskah");
-    } catch {
-      setServerError("Tidak bisa terhubung ke server.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setServerError("Pengiriman membutuhkan waktu terlalu lama. Coba gunakan file yang lebih kecil lalu kirim lagi.");
+      } else {
+        setServerError("Pengajuan belum terkirim karena koneksi bermasalah. Periksa internet lalu coba lagi.");
+      }
     } finally {
       setLoading(false);
+      setLoadingMessage("");
     }
   };
 
@@ -161,7 +212,7 @@ export default function TambahNaskahPage() {
       </p>
 
       <div className="card p-6">
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-5" noValidate>
           <div className="grid sm:grid-cols-2 gap-5">
             <div>
               <label className="block text-sm font-medium mb-1.5">Jenis Buku</label>
@@ -337,6 +388,11 @@ export default function TambahNaskahPage() {
             </svg>
             {serverError}
           </div>
+        )}
+        {loadingMessage && (
+          <p className="mt-3 text-sm" style={{ color: "var(--color-text-muted)" }}>
+            {loadingMessage} Batas waktu 2 menit.
+          </p>
         )}
       </div>
     </div>
