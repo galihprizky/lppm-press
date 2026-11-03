@@ -10,7 +10,7 @@ export interface Naskah {
   pake_editor_pribadi: boolean;
   status_cover: string;
   status_saat_ini: string;
-  created_at?: string;
+  created_at?: string | Record<string, unknown>;
   file_draft_naskah?: string | null;
   file_draft_naskah_revisi?: string | null;
   file_profile_penulis?: string | null;
@@ -23,6 +23,8 @@ export interface NaskahVersion {
   id?: number;
   tahap?: string;
   versi_ke?: number;
+  catatan_perubahan?: string | null;
+  created_at?: string | Record<string, unknown>;
   file_draft_naskah?: string | null;
   file_draft_naskah_revisi?: string | null;
   file_profile_penulis?: string | null;
@@ -88,6 +90,7 @@ export function formatStatusLabel(status?: string | null): string {
 export interface StatusColors {
   background: string;
   color: string;
+  border: string;
   borderColor: string;
 }
 
@@ -96,18 +99,18 @@ export function getStatusColors(status?: string | null): StatusColors | undefine
   if (!normalizedStatus) return undefined;
 
   if (["REJECTED", "DITOLAK"].includes(normalizedStatus)) {
-    return { background: "#fdf0ee", color: "#c0392b", borderColor: "#f1c2bd" };
+    return { background: "#fdf0ee", color: "#c0392b", border: "1.5px solid #f1c2bd", borderColor: "#f1c2bd" };
   }
   if (["REVISION_REQUIRED", "REVISI", "REVISI_MINOR", "REVISI_MAYOR", "REVISI_MAJOR"].includes(normalizedStatus)) {
-    return { background: "#fff4df", color: "#b36b00", borderColor: "#f2d39a" };
+    return { background: "#fff4df", color: "#b36b00", border: "1.5px solid #f2d39a", borderColor: "#f2d39a" };
   }
   if (["APPROVED", "PUBLISHED", "DITERIMA"].includes(normalizedStatus)) {
-    return { background: "#eafaf1", color: "#1e8449", borderColor: "#b8d9c3" };
+    return { background: "#eafaf1", color: "#1e8449", border: "1.5px solid #b8d9c3", borderColor: "#b8d9c3" };
   }
   if (["REVIEW", "UNDER_REVIEW"].includes(normalizedStatus)) {
-    return { background: "#fef9e7", color: "#b7770d", borderColor: "#f2dda1" };
+    return { background: "#fff8cc", color: "#9a6700", border: "1.5px solid #e8c84a", borderColor: "#e8c84a" };
   }
-  return { background: "#e8f4fd", color: "#1565c0", borderColor: "#b9dcf7" };
+  return { background: "#e8f4fd", color: "#1565c0", border: "1.5px solid #b9dcf7", borderColor: "#b9dcf7" };
 }
 
 export function canEditNaskah(status: string | null | undefined): boolean {

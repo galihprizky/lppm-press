@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { fetchReviewerNaskahList } from "@/lib/reviewer";
 import { API_URL } from "@/lib/config";
 import { getNaskahDocument } from "@/lib/documents";
-import { getActiveRole } from "@/lib/storage";
+import { getActiveRole, getSessionValue } from "@/lib/storage";
 
 interface ReviewDocument {
   label: string;
@@ -98,7 +98,7 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
 
   useEffect(() => {
     const loadAssignedReviews = async () => {
-      const reviewerId = Number(localStorage.getItem("user_id"));
+      const reviewerId = Number(getSessionValue("user_id"));
       if (!reviewerId) {
         setLoadError("ID Reviewer tidak ditemukan. Silakan login kembali.");
         setLoading(false);

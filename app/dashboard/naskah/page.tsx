@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ApiListResponse, canEditNaskah, canManageNaskah, formatStatusLabel, getStatusColors, Naskah, JENIS_BUKU_OPTIONS, STATUS_SAAT_INI_OPTIONS } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
-import { getActiveRole } from "@/lib/storage";
+import { getActiveRole, getSessionValue } from "@/lib/storage";
 import { fetchReviewerNaskahList } from "@/lib/reviewer";
 
 const PAGE_SIZE = 5;
@@ -57,7 +57,7 @@ export default function NaskahPage() {
   };
 
   useEffect(() => {
-    const userId = localStorage.getItem("user_id");
+    const userId = getSessionValue("user_id");
     const activeRole = getActiveRole()?.trim().toUpperCase();
     const lppm = activeRole === "LPPM";
     const reviewer = activeRole === "REVIEWER";

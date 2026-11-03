@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatStatusLabel, Naskah } from "@/app/dashboard/naskah/types";
 import { DashboardRole, fetchDashboardData } from "@/lib/dashboard";
-import { getActiveRole } from "@/lib/storage";
+import { getActiveRole, getSessionValue } from "@/lib/storage";
 
 interface StatCard {
   label: string;
@@ -26,7 +26,7 @@ export default function DashboardPage() {
       setActiveRole(role);
 
       try {
-        const data = await fetchDashboardData({ role, userId: localStorage.getItem("user_id") });
+        const data = await fetchDashboardData({ role, userId: getSessionValue("user_id") });
         setNaskah(data.naskah);
       } catch {
         setNaskah([]);

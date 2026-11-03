@@ -13,7 +13,7 @@ import {
   WARNA_ISI_OPTIONS,
 } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
-import { getActiveRole } from "@/lib/storage";
+import { getActiveRole, getSessionValue } from "@/lib/storage";
 
 type FormErrors = Partial<Record<keyof NaskahForm, string>>;
 
@@ -111,7 +111,7 @@ export default function TambahNaskahPage() {
     setLoadingMessage("Menyiapkan file untuk dikirim...");
 
     try {
-      const userId = localStorage.getItem("user_id") ?? "";
+      const userId = getSessionValue("user_id") ?? "";
       if (!userId || !/^\d+$/.test(userId)) {
         setServerError("Sesi login tidak ditemukan. Silakan login kembali sebagai Author lalu coba lagi.");
         return;

@@ -1,2 +1,2 @@
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "/api/lppm";
+  process.env.NEXT_PUBLIC_API_URL || "https://aplikasilaundryonline.com/lppm-press";

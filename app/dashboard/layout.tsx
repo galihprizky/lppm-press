@@ -6,8 +6,11 @@ import Link from "next/link";
 import { getAllowedMenuKeys } from "@/lib/menu-access";
 import {
   ACTIVE_ROLE_STORAGE_KEY,
+  clearSession,
   getActiveRole,
+  getSessionValue,
   getUserRoleNames,
+  setSessionValue,
 } from "@/lib/storage";
 
 interface NavItem {
@@ -101,8 +104,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [rolePickerOpen, setRolePickerOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    const storedEmail = localStorage.getItem("user_email");
+    const token = getSessionValue("access_token");
+    const storedEmail = getSessionValue("user_email");
 
     if (token) {
       setIsAuthenticated(true);
@@ -125,20 +128,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("token_type");
-    localStorage.removeItem("access_token_expires_at");
-    localStorage.removeItem("user_email");
-    localStorage.removeItem("user_roles");
-    localStorage.removeItem("user_role_names");
-    localStorage.removeItem("user_role_name");
-    localStorage.removeItem(ACTIVE_ROLE_STORAGE_KEY);
+    clearSession();
     router.push("/login");
   };
 
   const handleRoleChange = (role: string) => {
-    localStorage.setItem(ACTIVE_ROLE_STORAGE_KEY, role);
+    setSessionValue(ACTIVE_ROLE_STORAGE_KEY, role);
     setActiveRole(role);
     setRolePickerOpen(false);
     router.push("/dashboard");

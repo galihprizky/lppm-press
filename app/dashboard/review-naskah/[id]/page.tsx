@@ -2,11 +2,11 @@
 
 import { ChangeEvent, FormEvent, use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { formatStatusLabel, getStatusColors, Naskah } from "@/app/dashboard/naskah/types";
+import { getStatusColors, Naskah, NaskahVersion } from "@/app/dashboard/naskah/types";
 import { ApiResponse } from "@/app/dashboard/users/types";
 import { API_URL } from "@/lib/config";
 import { getNaskahDocument, toPublicDocumentUrl } from "@/lib/documents";
-import { getActiveRole } from "@/lib/storage";
+import { getActiveRole, getSessionValue } from "@/lib/storage";
 
 interface ReviewComment {
   id: number;
@@ -58,6 +58,24 @@ function formatFileSize(value?: unknown): string | undefined {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatReviewStatus(value?: string | null): string {
+  if (!value) return "-";
+  return value.trim().toUpperCase().replace(/\s+/g, "_").replace("REVISI_MAYOR", "REVISI_MAJOR");
+}
+
+function statusForRecommendation(value: string): string {
+  const normalized = formatReviewStatus(value);
+  if (normalized === "DITOLAK") return "REJECTED";
+  if (normalized === "DITERIMA") return "APPROVED_FOR_EDIT";
+  return "REVISION_REQUIRED";
+}
+
+function getRevisionVersions(naskah: Naskah): NaskahVersion[] {
+  return [...(naskah.versi_naskah ?? [])]
+    .filter((version) => version.tahap?.trim().toUpperCase() === "REVISI_DOSEN")
+    .sort((left, right) => (right.versi_ke ?? 0) - (left.versi_ke ?? 0));
+}
+
 function normalizeReviewComments(value: unknown): ReviewComment[] {
   if (!Array.isArray(value)) return [];
 
@@ -97,8 +115,8 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
   const [error, setError] = useState("");
   const [isReviewer, setIsReviewer] = useState(false);
   const [acceptingAssignment, setAcceptingAssignment] = useState(false);
-  const [deletingReview, setDeletingReview] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showStatusUpdate, setShowStatusUpdate] = useState(false);
   const reviewFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -115,11 +133,15 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
         const payload: ApiResponse<Naskah> = await response.json();
         if (!response.ok) throw new Error(payload.message || "Gagal memuat detail naskah.");
         setNaskah(payload.data ?? null);
-        setComments(normalizeReviewComments(payload.data?.hasil_review));
+        const loadedComments = normalizeReviewComments(payload.data?.hasil_review);
+        setComments(loadedComments);
+        const hasRevision = payload.data ? getRevisionVersions(payload.data).length > 0 : false;
+        const isApprovedForEdit = formatReviewStatus(payload.data?.status_saat_ini) === "APPROVED_FOR_EDIT";
+        setShowStatusUpdate(hasRevision && !isApprovedForEdit);
 
         const assignmentResponse = await fetch(`${API_URL}/penugasan-reviewer/naskah/${id}`);
         const assignmentPayload: ApiResponse<ReviewerAssignment[]> = await assignmentResponse.json();
-        const reviewerId = Number(localStorage.getItem("user_id"));
+        const reviewerId = Number(getSessionValue("user_id"));
         const currentAssignment = (assignmentPayload.data ?? []).find((item) => item.reviewer_id === reviewerId) ?? null;
         setAssignment(currentAssignment);
         if (!currentAssignment) throw new Error("Naskah ini belum ditugaskan kepada akun reviewer Anda.");
@@ -163,14 +185,6 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
       const reviewPayload: ApiResponse<unknown> = await reviewResponse.json().catch(() => ({}));
       if (!reviewResponse.ok) throw new Error(reviewPayload.message || "Gagal menyimpan hasil review.");
 
-      // API hasil review dapat mengubah status otomatis berdasarkan rekomendasi.
-      // Kembalikan ke UNDER_REVIEW sampai reviewer menekan Update Status Naskah.
-      const reviewStatusData = new FormData();
-      reviewStatusData.append("status_saat_ini", "UNDER_REVIEW");
-      const reviewStatusResponse = await fetch(`${API_URL}/naskah/${id}`, { method: "PUT", body: reviewStatusData });
-      const reviewStatusPayload: ApiResponse<unknown> = await reviewStatusResponse.json().catch(() => ({}));
-      if (!reviewStatusResponse.ok) throw new Error(reviewStatusPayload.message || "Komentar tersimpan, tetapi status naskah gagal dikembalikan ke Under Review.");
-
       const reviewData = reviewPayload.data && typeof reviewPayload.data === "object" ? reviewPayload.data as Record<string, unknown> : {};
       const submittedFile = typeof reviewData.file_catatan_review === "string" ? reviewData.file_catatan_review : "";
       const localFileUrl = reviewFile ? URL.createObjectURL(reviewFile) : undefined;
@@ -184,11 +198,25 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
         fileSize: reviewFile ? formatFileSize(reviewFile.size) : formatFileSize(reviewData.file_size ?? reviewData.ukuran_file),
         recommendation,
       }]);
-      setNaskah((current) => current ? { ...current, status_saat_ini: "UNDER_REVIEW" } : current);
       setComment("");
       setReviewFile(null);
       if (reviewFileInputRef.current) reviewFileInputRef.current.value = "";
-      setSubmitMessage("Hasil review berhasil disimpan. Status naskah belum diperbarui.");
+
+      if (formatReviewStatus(recommendation) === "DITERIMA") {
+        setShowStatusUpdate(false);
+        setSubmitMessage("Hasil review berhasil disimpan. Tombol update status akan muncul setelah author mengirim revisi.");
+      } else {
+        const status = statusForRecommendation(recommendation);
+        const statusData = new FormData();
+        statusData.append("status_saat_ini", status);
+        const statusResponse = await fetch(`${API_URL}/naskah/${id}`, { method: "PUT", body: statusData });
+        const statusPayload: ApiResponse<unknown> = await statusResponse.json().catch(() => ({}));
+        if (!statusResponse.ok) throw new Error(statusPayload.message || "Komentar tersimpan, tetapi status naskah gagal diperbarui.");
+
+        setNaskah((current) => current ? { ...current, status_saat_ini: status } : current);
+        setShowStatusUpdate(false);
+        setSubmitMessage(`Hasil review dan status ${formatReviewStatus(status)} berhasil disimpan.`);
+      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Tidak bisa menyimpan hasil review.");
     } finally {
@@ -199,12 +227,7 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => setReviewFile(event.target.files?.[0] ?? null);
 
   const handleUpdateStatus = async () => {
-    const latestRecommendation = comments[comments.length - 1]?.recommendation || recommendation;
-    const status = latestRecommendation === "DITERIMA"
-      ? "UNDER_REVIEW"
-      : latestRecommendation === "DITOLAK"
-        ? "REJECTED"
-        : "REVISION_REQUIRED";
+    const status = "APPROVED_FOR_EDIT";
 
     setUpdatingStatus(true);
     setError("");
@@ -216,31 +239,12 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
       if (!statusResponse.ok) throw new Error(statusPayload.message || "Gagal memperbarui status naskah.");
 
       setNaskah((current) => current ? { ...current, status_saat_ini: status } : current);
+      setShowStatusUpdate(false);
       setSubmitMessage("Status naskah berhasil diperbarui.");
     } catch (statusError) {
       setError(statusError instanceof Error ? statusError.message : "Gagal memperbarui status naskah.");
     } finally {
       setUpdatingStatus(false);
-    }
-  };
-
-  const handleDeleteReview = async (reviewId: number) => {
-    if (!window.confirm("Hapus komentar review ini? Komentar dan file catatan yang dikirim akan dihapus.")) return;
-
-    setDeletingReview(true);
-    setError("");
-    setSubmitMessage("");
-    try {
-      const response = await fetch(`${API_URL}/hasil-review/${reviewId}`, { method: "DELETE" });
-      const payload: ApiResponse<unknown> = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.message || "Gagal menghapus komentar review.");
-
-      setComments((current) => current.filter((item) => item.id !== reviewId));
-      setSubmitMessage("Komentar review berhasil dihapus. Anda dapat mengirim komentar baru.");
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Gagal menghapus komentar review.");
-    } finally {
-      setDeletingReview(false);
     }
   };
 
@@ -281,8 +285,8 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
           <div className="min-w-0"><h1 className="text-xl font-bold break-words">{displayText(naskah.judul_naskah)}</h1><p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>Review naskah oleh reviewer</p></div>
           <div className="flex flex-wrap items-center justify-end gap-3">
-            <span className="badge" style={getStatusColors(naskah.status_saat_ini)}>{formatStatusLabel(naskah.status_saat_ini)}</span>
-            {comments.length > 0 && <button type="button" className="btn-primary" onClick={handleUpdateStatus} disabled={updatingStatus}>{updatingStatus ? "Memperbarui..." : "Update Status Naskah"}</button>}
+            {showStatusUpdate && <button type="button" className="btn-primary" onClick={handleUpdateStatus} disabled={updatingStatus}>{updatingStatus ? "MEMPERBARUI..." : "Update Status Naskah"}</button>}
+            <span className="badge" style={getStatusColors(naskah.status_saat_ini)}>{formatReviewStatus(naskah.status_saat_ini)}</span>
           </div>
         </div>
         <details open>
@@ -292,7 +296,7 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
             <DetailRow label="Sinopsis" value={naskah.sinopsis} className="md:col-span-3" />
           </div>
           <div className="naskah-meta mt-4" aria-label="Metadata naskah">
-            <div className="naskah-meta-item naskah-meta-status" style={getStatusColors(naskah.status_saat_ini)}><span className="naskah-meta-label">Status</span><span className="naskah-meta-value" style={{ color: getStatusColors(naskah.status_saat_ini)?.color }}>{formatStatusLabel(naskah.status_saat_ini)}</span></div>
+            <div className="naskah-meta-item naskah-meta-status" style={getStatusColors(naskah.status_saat_ini)}><span className="naskah-meta-label">Status</span><span className="naskah-meta-value" style={{ color: getStatusColors(naskah.status_saat_ini)?.color }}>{formatReviewStatus(naskah.status_saat_ini)}</span></div>
             <div className="naskah-meta-item"><span className="naskah-meta-label">Jenis buku</span><span className="naskah-meta-value">{displayText(naskah.jenis_buku)}</span></div>
             <div className="naskah-meta-item"><span className="naskah-meta-label">Target</span><span className="naskah-meta-value naskah-meta-target">{(naskah.target_pembaca ?? []).map(displayText).join(", ") || "-"}</span></div>
             <div className="naskah-meta-item"><span className="naskah-meta-label">Warna isi</span><span className="naskah-meta-value">{displayText(naskah.warna_isi_buku)}</span></div>
@@ -303,12 +307,11 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
         </details>
       </section>
 
-      <div className="grid lg:grid-cols-2 gap-6 mb-6">
+      <div className="mb-6">
         <DocumentSection title="Dokumen Sebelum Revisi" url={getNaskahDocument(naskah, "file_draft_naskah")} emptyText="Dokumen awal belum tersedia" />
-        <DocumentSection title="Dokumen Setelah Revisi" url={getNaskahDocument(naskah, "file_draft_naskah_revisi")} emptyText="Belum ada dokumen revisi" />
       </div>
 
-      <section className="card p-6">
+      <section className="card review-comments-card p-6 mb-6">
         <h2 className="font-semibold">Komentar Review</h2>
         <p className="text-sm mt-1 mb-5" style={{ color: "var(--color-text-muted)" }}>{comments.length} komentar</p>
         {submitMessage && <p className="mb-8 rounded-lg border p-4 text-sm" style={{ background: "var(--color-success-pale)", color: "var(--color-success)", borderColor: "#b8d9c3" }}>{submitMessage}</p>}
@@ -320,7 +323,7 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
             </button>
           </div>
         )}
-        <div className="space-y-3 mb-6">{comments.map((item) => <div key={item.id} className="rounded-lg border p-5" style={{ background: "#fbfcfc", borderColor: "var(--color-border)" }}><div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b" style={{ borderColor: "var(--color-border)" }}><span className="text-base font-semibold">{item.author}</span><div className="flex items-center gap-3"><span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{item.createdAt}</span><button type="button" className="btn-danger" onClick={() => handleDeleteReview(item.id)} disabled={deletingReview}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v5M14 11v5" /></svg>{deletingReview ? "Menghapus..." : "Hapus"}</button></div></div><p className="text-base leading-6 pt-4">{item.text}</p>{item.fileUrl && <a href={item.fileUrl} download={item.fileName} target="_blank" rel="noreferrer" className="mt-5 flex w-full max-w-sm items-center gap-3 rounded-lg border p-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md" style={{ background: "#eef5ff", color: "#2563eb" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></svg></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.fileName || "File catatan review"}</span><span className="block text-xs" style={{ color: "var(--color-text-muted)" }}>{item.fileSize || "Dokumen review"}</span></span><span className="text-sm font-semibold" style={{ color: "var(--color-primary)" }}>Unduh</span></a>}</div>)}{comments.length === 0 && <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada komentar review.</p>}</div>
+        <div className="space-y-3 mb-6">{comments.map((item) => <div key={item.id} className="rounded-lg border p-5" style={{ background: "#fbfcfc", borderColor: "var(--color-border)" }}><div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b" style={{ borderColor: "var(--color-border)" }}><span className="text-base font-semibold">{item.author}</span><span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{item.createdAt}</span></div><p className="text-base leading-6 pt-4">{item.text}</p>{item.fileUrl && <a href={item.fileUrl} download={item.fileName} target="_blank" rel="noreferrer" className="mt-5 flex w-full max-w-sm items-center gap-3 rounded-lg border p-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md" style={{ background: "#eef5ff", color: "#2563eb" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></svg></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.fileName || "File catatan review"}</span><span className="block text-xs" style={{ color: "var(--color-text-muted)" }}>{item.fileSize || "Dokumen review"}</span></span><span className="text-sm font-semibold" style={{ color: "var(--color-primary)" }}>Unduh</span></a>}</div>)}{comments.length === 0 && <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada komentar review.</p>}</div>
         {comments.length > 0 && <p className="mb-5 rounded-lg border p-4 text-sm" style={{ background: "#eff6ff", color: "#3656c8", borderColor: "#cfe0ff" }}>Hasil review sudah dikirim. Form komentar hanya dapat digunakan satu kali untuk penugasan ini.</p>}
         {comments.length === 0 && <form onSubmit={handleCommentSubmit} className="space-y-3" aria-disabled={assignment.status_penugasan !== "ACCEPTED"}>
           <label className="block text-sm font-medium" htmlFor="review-comment">Tambah komentar</label>
@@ -330,20 +333,62 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
           {reviewFile && <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>File dipilih: {reviewFile.name}</p>}
           <label className="block text-sm font-medium" htmlFor="review-recommendation">Rekomendasi</label>
           <select id="review-recommendation" className="input-base" value={recommendation} onChange={(event) => setRecommendation(event.target.value)} disabled={assignment.status_penugasan !== "ACCEPTED" || comments.length > 0}>
-            <option value="REVISI_MINOR">Revisi minor</option>
-            <option value="REVISI_MAYOR">Revisi major</option>
-            <option value="DITERIMA">Diterima</option>
-            <option value="DITOLAK">Ditolak</option>
+            <option value="REVISI_MINOR">REVISI_MINOR</option>
+            <option value="REVISI_MAYOR">REVISI_MAJOR</option>
+            <option value="DITERIMA">DITERIMA</option>
+            <option value="DITOLAK">DITOLAK</option>
           </select>
           {error && <p className="text-sm" style={{ color: "var(--color-danger)" }}>{error}</p>}
           <div className="flex justify-end"><button type="submit" className="btn-primary" disabled={submitting || assignment.status_penugasan !== "ACCEPTED" || comments.length > 0}>{submitting ? "Menyimpan..." : "Kirim Hasil Review"}</button></div>
         </form>}
       </section>
+
+      <RevisionDocumentSection versions={getRevisionVersions(naskah)} />
     </div>
   );
 }
 
 function DocumentSection({ title, url, emptyText }: { title: string; url?: string | null; emptyText: string }) {
   const fileName = url?.split("/").pop() || "";
-  return <section className="card p-4 sm:p-6 min-w-0 h-full"><h2 className="font-semibold mb-4">{title}</h2>{url ? <><p className="text-sm break-all mb-4" style={{ color: "var(--color-text-muted)" }}>{fileName}</p><a href={url} target="_blank" rel="noreferrer" className="btn-secondary w-full justify-center">Buka / Preview Dokumen</a></> : <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>{emptyText}</p>}</section>;
+  return <section className="card review-document-card p-4 sm:p-6 min-w-0 h-full">
+    <h2 className="font-semibold mb-4">{title}</h2>
+    {url ? <DocumentFileRow fileName={fileName} url={url} /> : <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>{emptyText}</p>}
+  </section>;
+}
+
+function RevisionDocumentSection({ versions }: { versions: NaskahVersion[] }) {
+  return <section className="card review-document-card p-4 sm:p-6 min-w-0">
+    <div className="flex items-center justify-between gap-3 mb-4">
+      <h2 className="font-semibold">Dokumen Setelah Revisi</h2>
+      {versions.length > 0 && <span className="review-version-badge">REVISI</span>}
+    </div>
+    {versions.length ? <div className="space-y-5">
+      {versions.map((version, index) => {
+        const fileValue = typeof version.file_draft_naskah === "string" && version.file_draft_naskah.trim() && version.file_draft_naskah !== "Belum diisi" ? version.file_draft_naskah : "";
+        const fileUrl = fileValue ? toPublicDocumentUrl(fileValue) : null;
+        const fileName = fileValue.split("/").pop() || "";
+        const note = version.catatan_perubahan?.trim() || "Tidak ada catatan perubahan";
+        return <div key={version.id ?? index} className="border-b pb-5 last:border-b-0 last:pb-0" style={{ borderColor: "var(--color-border)" }}>
+          {fileUrl ? <DocumentFileRow fileName={fileName} url={fileUrl} revision /> : <p className="text-sm mb-3" style={{ color: "var(--color-text-muted)" }}>Belum ada dokumen revisi</p>}
+          <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--color-border)" }}>
+            <span className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Perubahan dari Author</span>
+            <p className="review-author-note text-sm leading-6">{note}</p>
+          </div>
+        </div>;
+      })}
+    </div> : <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada dokumen revisi</p>}
+  </section>;
+}
+
+function DocumentFileRow({ fileName, url, revision = false }: { fileName: string; url: string; revision?: boolean }) {
+  return <div className="review-document-row">
+    <span className={`review-document-icon${revision ? " revision" : ""}`} aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></svg>
+    </span>
+    <span className="review-document-name" title={fileName}>{fileName}</span>
+    <a href={url} target="_blank" rel="noreferrer" className="review-preview-button">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></svg>
+      <span>Preview</span>
+    </a>
+  </div>;
 }

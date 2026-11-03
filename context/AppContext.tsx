@@ -33,25 +33,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem("currentUser");
-      const savedUsers = localStorage.getItem("users"); 
-
-      if (savedUser) {
-        setTimeout(() => {
-          setCurrentUser(JSON.parse(savedUser));
-        }, 0);
-      }
-      if (savedUsers) setUsers(JSON.parse(savedUsers));
-    } catch {
-      // ignore parse errors
-    }
     setIsLoading(false);
   }, []);
-
-  useEffect(() => {
-    if (!isLoading) localStorage.setItem("users", JSON.stringify(users));
-  }, [users, isLoading]);
 
   // AUTH
   const login = (email: string, password: string): ActionResult => {
@@ -60,7 +43,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     if (user) {
       setCurrentUser(user);
-      localStorage.setItem("currentUser", JSON.stringify(user));
       return { success: true };
     }
     return { success: false, message: "Email atau password salah." };
@@ -82,7 +64,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setCurrentUser(null);
-    localStorage.removeItem("currentUser");
   };
 
   const updateProfile = (data: Partial<User>): ActionResult => {
@@ -92,17 +73,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     const updated = { ...currentUser, ...data };
     setCurrentUser(updated);
-    localStorage.setItem("currentUser", JSON.stringify(updated));
     return { success: true };
   };
 
   const setAuthenticatedUser = (user: User | null) => {
     setCurrentUser(user);
-    if (user) {
-      localStorage.setItem("currentUser", JSON.stringify(user));
-    } else {
-      localStorage.removeItem("currentUser");
-    }
   };
 
   return (

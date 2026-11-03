@@ -2,17 +2,14 @@
 // src/app/page.tsx
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useApp } from "@/context/AppContext";
+import { getSessionValue } from "@/lib/storage";
 
 export default function Home() {
-  const { currentUser, isLoading } = useApp();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading) {
-      router.replace(currentUser ? "/dashboard" : "/login");
-    }
-  }, [currentUser, isLoading, router]);
+    router.replace(getSessionValue("access_token") ? "/dashboard" : "/login");
+  }, [router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">

@@ -55,14 +55,23 @@ export default function RegisterPage() {
   const [jurusanList, setJurusanList] = useState<Jurusan[]>([]);
   const [loadingFakultas, setLoadingFakultas] = useState(false);
   const [loadingJurusan, setLoadingJurusan] = useState(false);
+  const [jurusanLoadError, setJurusanLoadError] = useState("");
 
   useEffect(() => {
     const fetchFakultas = async () => {
       setLoadingFakultas(true);
       try {
-        const res = await fetch(`${API_URL}/fakultas`);
-        const json = await res.json();
-        setFakultasList(Array.isArray(json?.data) ? json.data : []);
+        const [fakultasRes, jurusanRes] = await Promise.all([
+          fetch(`${API_URL}/fakultas`),
+          fetch(`${API_URL}/jurusan`),
+        ]);
+        const fakultasJson = await fakultasRes.json();
+        const jurusanJson = await jurusanRes.json();
+        const jurusanData: Jurusan[] = Array.isArray(jurusanJson?.data) ? jurusanJson.data : [];
+        const fakultasData: Fakultas[] = Array.isArray(fakultasJson?.data) ? fakultasJson.data : [];
+        const fakultasDenganJurusan = new Set(jurusanData.map((item) => item.fakultas_id));
+
+        setFakultasList(fakultasData.filter((item) => fakultasDenganJurusan.has(item.id)));
       } catch {
         setFakultasList([]);
       } finally {
@@ -77,16 +86,21 @@ export default function RegisterPage() {
     const fetchJurusan = async () => {
       if (!form.fakultas_id) {
         setJurusanList([]);
+        setJurusanLoadError("");
         return;
       }
 
       setLoadingJurusan(true);
+      setJurusanLoadError("");
       try {
         const res = await fetch(`${API_URL}/jurusan/fakultas/${form.fakultas_id}`);
         const json = await res.json();
-        setJurusanList(Array.isArray(json?.data) ? json.data : []);
+        const data = Array.isArray(json?.data) ? json.data : [];
+        setJurusanList(data);
+        if (!data.length) setJurusanLoadError("Belum ada jurusan untuk fakultas ini.");
       } catch {
         setJurusanList([]);
+        setJurusanLoadError("Jurusan tidak dapat dimuat. Coba lagi.");
       } finally {
         setLoadingJurusan(false);
       }
@@ -311,7 +325,7 @@ export default function RegisterPage() {
             <div>
               <label className="block text-sm font-medium mb-1.5">Jurusan</label>
               <select
-                className={`input-base ${errors.jurusan_id ? "error" : ""}`}
+                className={`input-base ${errors.jurusan_id ? "error" : ""} ${!form.fakultas_id ? "opacity-50 cursor-not-allowed" : ""}`}
                 value={form.jurusan_id}
                 onChange={(e) => update("jurusan_id", e.target.value)}
                 disabled={!form.fakultas_id || loadingJurusan}
@@ -321,6 +335,8 @@ export default function RegisterPage() {
                     ? "Pilih fakultas terlebih dahulu"
                     : loadingJurusan
                       ? "Memuat jurusan..."
+                      : jurusanLoadError
+                        ? jurusanLoadError
                       : "Pilih jurusan"}
                 </option>
                 {jurusanList.map((item) => (

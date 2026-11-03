@@ -17,7 +17,7 @@ import {
 } from "@/app/dashboard/naskah/types";
 import { ApiResponse } from "@/app/dashboard/users/types";
 import { API_URL } from "@/lib/config";
-import { getActiveRole } from "@/lib/storage";
+import { getActiveRole, getSessionValue } from "@/lib/storage";
 
 type FormErrors = Partial<Record<keyof NaskahForm, string>>;
 
@@ -61,7 +61,7 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
           return;
         }
 
-        const userId = localStorage.getItem("user_id");
+        const userId = getSessionValue("user_id");
         const activeRole = getActiveRole()?.trim().toUpperCase();
         const isLppm = activeRole === "LPPM";
         const isOwner = String(found.pengusul_id) === userId;

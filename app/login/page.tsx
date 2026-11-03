@@ -4,18 +4,17 @@ import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { API_URL } from "@/lib/config";
-import { ACTIVE_ROLE_STORAGE_KEY, normalizeRoleNames } from "@/lib/storage";
+import {
+  ACTIVE_ROLE_STORAGE_KEY,
+  clearSession,
+  normalizeRoleNames,
+  setSessionValue,
+} from "@/lib/storage";
 // import { useApp } from "@/context/AppContext";
 
 interface LoginForm {
   email: string;
   password: string;
-}
-
-interface UserRole {
-  id: number;
-  nama_role: string;
-  deskripsi: string;
 }
 
 type FormErrors = Partial<Record<keyof LoginForm, string>>;
@@ -83,29 +82,38 @@ export default function LoginPage() {
         name?: string;
         nama?: string;
             user_role_name?: unknown;
-        roles?: UserRole[];
+        roles?: unknown;
+        user_roles?: unknown;
+        role?: unknown;
       } = await res.json();
 
-      localStorage.setItem("access_token", data.access_token);
-      localStorage.setItem("refresh_token", data.refresh_token);
-      localStorage.setItem("token_type", data.token_type);
-      localStorage.setItem(
+      clearSession();
+      setSessionValue("access_token", data.access_token);
+      setSessionValue("refresh_token", data.refresh_token);
+      setSessionValue("token_type", data.token_type);
+      setSessionValue(
         "access_token_expires_at",
         String(Date.now() + data.expires_in * 1000)
       );
       if (data.id !== undefined && data.id !== null) {
-        localStorage.setItem("user_id", String(data.id));
+        setSessionValue("user_id", String(data.id));
       }
-      localStorage.setItem("user_name", data.name ?? data.nama ?? "");
-      localStorage.setItem("user_roles", JSON.stringify(data.roles ?? []));
-      const roleNames = normalizeRoleNames(data.user_role_name ?? data.roles);
-      localStorage.setItem(
+      setSessionValue("user_name", data.name ?? data.nama ?? "");
+      const roleNames = Array.from(
+        new Set(
+          [data.user_role_name, data.roles, data.user_roles, data.role].flatMap(
+            normalizeRoleNames
+          )
+        )
+      );
+      setSessionValue("user_roles", JSON.stringify(data.roles ?? data.user_roles ?? []));
+      setSessionValue(
         "user_role_names",
         JSON.stringify(roleNames)
       );
-      localStorage.setItem("user_role_name", JSON.stringify(roleNames));
-      localStorage.setItem(ACTIVE_ROLE_STORAGE_KEY, roleNames[0] ?? "");
-      localStorage.setItem("user_email", form.email);
+      setSessionValue("user_role_name", JSON.stringify(roleNames));
+      setSessionValue(ACTIVE_ROLE_STORAGE_KEY, roleNames[0] ?? "");
+      setSessionValue("user_email", form.email);
 
       router.push("/dashboard");
     } catch {

@@ -3,11 +3,11 @@
 import { ChangeEvent, FormEvent, use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { canEditNaskah, canManageNaskah, canUploadRevision, formatStatusLabel, getStatusColors, Naskah } from "@/app/dashboard/naskah/types";
+import { canEditNaskah, canManageNaskah, formatStatusLabel, getStatusColors, Naskah, NaskahVersion } from "@/app/dashboard/naskah/types";
 import { ApiResponse, User } from "@/app/dashboard/users/types";
 import { API_URL } from "@/lib/config";
 import { getNaskahDocument, toPublicDocumentUrl } from "@/lib/documents";
-import { getActiveRole } from "@/lib/storage";
+import { getActiveRole, getSessionValue } from "@/lib/storage";
 
 interface ReviewerAssignment {
   id: number;
@@ -69,8 +69,9 @@ function formatReviewDeadline(value?: string) {
   }).format(date);
 }
 
-function formatReviewDate(value?: string) {
+function formatReviewDate(value?: unknown) {
   if (!value) return "—";
+  if (typeof value !== "string" && typeof value !== "number") return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("id-ID", {
@@ -86,6 +87,17 @@ function reviewRecommendationLabel(value?: string) {
 
 function reviewRecommendationColors(value?: string) {
   return getStatusColors(value);
+}
+
+function reviewerNameFromResults(results: ReviewResult[]): string {
+  const latestReview = results[results.length - 1];
+  return latestReview?.nama_reviewer || reviewResultText(latestReview?.reviewer) || "Belum ada reviewer";
+}
+
+function getRevisionVersions(naskah: Naskah): NaskahVersion[] {
+  return [...(naskah.versi_naskah ?? [])]
+    .filter((version) => version.tahap?.trim().toUpperCase() === "REVISI_DOSEN")
+    .sort((left, right) => (right.versi_ke ?? 0) - (left.versi_ke ?? 0));
 }
 
 function splitDeadline(value: string) {
@@ -112,6 +124,9 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [reviewerAssignment, setReviewerAssignment] = useState<ReviewerAssignment | null>(null);
   const [activeRole, setActiveRole] = useState("");
   const [revisionFile, setRevisionFile] = useState<File | null>(null);
+  const [revisionProfileFile, setRevisionProfileFile] = useState<File | null>(null);
+  const [revisionAuthenticityFile, setRevisionAuthenticityFile] = useState<File | null>(null);
+  const [revisionNote, setRevisionNote] = useState("");
   const [revisionError, setRevisionError] = useState("");
   const [revisionMessage, setRevisionMessage] = useState("");
   const [uploadingRevision, setUploadingRevision] = useState(false);
@@ -120,6 +135,8 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [isAssignedReviewer, setIsAssignedReviewer] = useState(false);
   const [reviewResults, setReviewResults] = useState<ReviewResult[]>([]);
   const revisionFileInputRef = useRef<HTMLInputElement>(null);
+  const revisionProfileFileInputRef = useRef<HTMLInputElement>(null);
+  const revisionAuthenticityFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -136,7 +153,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
         setNaskah(found);
         setReviewResults(Array.isArray(found?.hasil_review) ? found.hasil_review as ReviewResult[] : []);
-        const userId = localStorage.getItem("user_id");
+        const userId = getSessionValue("user_id");
         const currentRole = getActiveRole()?.trim().toUpperCase() || "";
         const isLppm = currentRole === "LPPM";
         setActiveRole(currentRole);
@@ -154,7 +171,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   }, [id]);
 
   useEffect(() => {
-    const storedRoles = localStorage.getItem("user_role_names");
+    const storedRoles = getSessionValue("user_role_names");
     setIsLppm(getActiveRole()?.trim().toUpperCase() === "LPPM");
 
     if (!storedRoles) return;
@@ -177,13 +194,16 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     const fetchReviewerAssignment = async () => {
+      const currentRole = getActiveRole()?.trim().toUpperCase();
+      if (currentRole !== "LPPM" && currentRole !== "REVIEWER") return;
+
       try {
         const response = await fetch(`${API_URL}/penugasan-reviewer/naskah/${id}`);
         const json: ApiResponse<ReviewerAssignment[]> = await response.json();
         const assignment = Array.isArray(json.data) ? json.data[0] ?? null : null;
 
         setReviewerAssignment(assignment);
-        setIsAssignedReviewer(assignment?.reviewer_id === Number(localStorage.getItem("user_id")));
+        setIsAssignedReviewer(assignment?.reviewer_id === Number(getSessionValue("user_id")));
         if (assignment) {
           setReviewerId(String(assignment.reviewer_id));
           setDeadlineReview(assignment.deadline_review.slice(0, 16));
@@ -219,7 +239,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
       return;
     }
 
-    const appointedBy = localStorage.getItem("user_id");
+    const appointedBy = getSessionValue("user_id");
     if (!appointedBy) {
       setAssignmentError("User login tidak ditemukan.");
       return;
@@ -307,41 +327,82 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
     setRevisionFile(file);
   };
 
+  const handleOptionalRevisionFileChange = (
+    event: ChangeEvent<HTMLInputElement>,
+    setFile: (file: File | null) => void,
+  ) => {
+    const file = event.target.files?.[0] ?? null;
+    setRevisionError("");
+
+    if (file && file.size > MAX_REVISION_FILE_SIZE) {
+      setFile(null);
+      event.target.value = "";
+      setRevisionError("Ukuran setiap file tidak boleh melebihi 50 MB.");
+      return;
+    }
+
+    setFile(file);
+  };
+
   const handleRevisionSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setRevisionError("");
     setRevisionMessage("");
 
-    if (!canUploadRevision(naskah?.status_saat_ini)) {
-      setRevisionError("Naskah yang ditolak tidak dapat mengirim file revisi.");
+    if (naskah?.status_saat_ini?.trim().toUpperCase() !== "REVISION_REQUIRED") {
+      setRevisionError("Pengiriman revisi hanya tersedia saat status naskah REVISION_REQUIRED.");
+      return;
+    }
+
+    const uploadedBy = getSessionValue("user_id");
+    if (!uploadedBy) {
+      setRevisionError("Sesi user tidak ditemukan. Silakan login kembali.");
+      return;
+    }
+
+    if (!revisionNote.trim()) {
+      setRevisionError("Catatan perubahan wajib diisi.");
       return;
     }
 
     if (!revisionFile) {
-      setRevisionError("Pilih satu file naskah hasil revisi terlebih dahulu.");
+      setRevisionError("File draft naskah revisi wajib dipilih.");
       return;
     }
 
     setUploadingRevision(true);
     try {
       const formData = new FormData();
-      formData.append("file_draft_naskah_revisi", revisionFile);
+      formData.append("uploaded_by", uploadedBy);
+      formData.append("catatan_perubahan", revisionNote.trim());
+      formData.append("file_draft_naskah", revisionFile);
+      if (revisionProfileFile) formData.append("file_profile_penulis", revisionProfileFile);
+      if (revisionAuthenticityFile) formData.append("file_surat_keaslian", revisionAuthenticityFile);
       const response = await fetch(`${API_URL}/naskah/${naskah?.id ?? id}/revisi`, {
         method: "POST",
         body: formData,
       });
-      const payload: ApiResponse<Naskah> = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.message || "Gagal mengirim file revisi.");
+      const payload: ApiResponse<Naskah> & { error?: string; errors?: Record<string, string[]> } = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const validationError = payload.errors ? Object.values(payload.errors).flat().join(" ") : "";
+        throw new Error(payload.message || payload.error || validationError || "Gagal mengirim revisi naskah.");
+      }
 
-      setNaskah((current) => current ? {
-        ...current,
-        ...(payload.data ?? {}),
-        file_draft_naskah_revisi: payload.data?.file_draft_naskah_revisi ?? current.file_draft_naskah_revisi,
-        status_saat_ini: payload.data?.status_saat_ini ?? "REVISION_REQUIRED",
-      } : current);
+      const refreshedResponse = await fetch(`${API_URL}/naskah/${naskah?.id ?? id}`);
+      const refreshedPayload: ApiResponse<Naskah> = await refreshedResponse.json().catch(() => ({}));
+      if (!refreshedResponse.ok || !refreshedPayload.data) {
+        throw new Error("Revisi berhasil dikirim, tetapi detail naskah gagal dimuat ulang.");
+      }
+      setNaskah(refreshedPayload.data);
+      setReviewResults(Array.isArray(refreshedPayload.data.hasil_review) ? refreshedPayload.data.hasil_review as ReviewResult[] : []);
+      setRevisionNote("");
       setRevisionFile(null);
+      setRevisionProfileFile(null);
+      setRevisionAuthenticityFile(null);
       if (revisionFileInputRef.current) revisionFileInputRef.current.value = "";
-      setRevisionMessage("File revisi berhasil dikirim.");
+      if (revisionProfileFileInputRef.current) revisionProfileFileInputRef.current.value = "";
+      if (revisionAuthenticityFileInputRef.current) revisionAuthenticityFileInputRef.current.value = "";
+      setRevisionMessage("Revisi naskah berhasil dikirim.");
     } catch (uploadError) {
       setRevisionError(uploadError instanceof Error ? uploadError.message : "Tidak bisa mengirim file revisi.");
     } finally {
@@ -466,10 +527,6 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
             label="Surat Keaslian"
             url={getNaskahDocument(naskah, "file_surat_keaslian")}
           />
-          <NaskahDocument
-            label="Draft Revisi"
-            url={getNaskahDocument(naskah, "file_draft_naskah_revisi")}
-          />
         </div>
       </section>
 
@@ -487,7 +544,8 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
       )}
 
       {(activeRole === "AUTHOR" || activeRole === "USER") && (
-        <section className="card p-6 mb-5">
+        <div className="space-y-5 mb-5">
+          <section className="card p-6">
           <div className="mb-5">
             <h2 className="text-lg font-semibold">Detail Review</h2>
             <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
@@ -498,7 +556,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <InfoRow
               label="Nama Reviewer"
-              value={reviewerAssignment?.nama_reviewer || (reviewerAssignment?.reviewer_id ? `User #${reviewerAssignment.reviewer_id}` : "Belum ada reviewer")}
+              value={reviewerNameFromResults(reviewResults)}
             />
             <div className="py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
               <span className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>File Review</span>
@@ -546,30 +604,49 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
             )}
           </div>
 
-          {canUploadRevision(naskah.status_saat_ini) && (
-            <form onSubmit={handleRevisionSubmit} className="mt-6 pt-6 border-t space-y-4" style={{ borderColor: "var(--color-border)" }}>
+          </section>
+
+          <RevisionHistory versions={getRevisionVersions(naskah)} />
+
+          {naskah.status_saat_ini?.trim().toUpperCase() === "REVISION_REQUIRED" && (
+            <section className="card p-6">
+              <form onSubmit={handleRevisionSubmit} className="space-y-4">
               <div>
                 <h3 className="font-semibold">Upload Revisi Naskah</h3>
                 <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
-                  Pilih satu file naskah hasil revisi untuk dikirimkan kepada reviewer.
+                  Isi catatan perubahan dan pilih file revisi untuk dikirimkan kepada reviewer.
                 </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="revision-note">
+                  Catatan perubahan
+                </label>
+                <textarea
+                  id="revision-note"
+                  className={`input-base min-h-28 ${revisionError && !revisionNote.trim() ? "error" : ""}`}
+                  value={revisionNote}
+                  onChange={(event) => setRevisionNote(event.target.value)}
+                  placeholder="Jelaskan perubahan yang dilakukan pada naskah..."
+                  required
+                />
               </div>
               <div>
                 <label
                   className="block text-sm font-medium mb-1.5"
                   htmlFor="revision-file"
                 >
-                  File naskah revisi
+                  File draft naskah <span aria-hidden="true">*</span>
                 </label>
-                  <input
-                    ref={revisionFileInputRef}
+                <input
+                  ref={revisionFileInputRef}
                   id="revision-file"
                   type="file"
                   className={`input-base ${revisionError ? "error" : ""}`}
                   onChange={handleRevisionFileChange}
+                  required
                 />
                 <p className="text-xs mt-1.5" style={{ color: "var(--color-text-muted)" }}>
-                  Maksimal ukuran file: 50 MB. Hanya satu file.
+                  Maksimal ukuran file: 50 MB.
                 </p>
                 {revisionFile && (
                   <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
@@ -577,14 +654,41 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
                   </p>
                 )}
               </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="revision-profile-file">
+                  File profil penulis (opsional)
+                </label>
+                <input
+                  ref={revisionProfileFileInputRef}
+                  id="revision-profile-file"
+                  type="file"
+                  className={`input-base ${revisionError ? "error" : ""}`}
+                  onChange={(event) => handleOptionalRevisionFileChange(event, setRevisionProfileFile)}
+                />
+                {revisionProfileFile && <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>File dipilih: {revisionProfileFile.name}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="revision-authenticity-file">
+                  File surat keaslian (opsional)
+                </label>
+                <input
+                  ref={revisionAuthenticityFileInputRef}
+                  id="revision-authenticity-file"
+                  type="file"
+                  className={`input-base ${revisionError ? "error" : ""}`}
+                  onChange={(event) => handleOptionalRevisionFileChange(event, setRevisionAuthenticityFile)}
+                />
+                {revisionAuthenticityFile && <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>File dipilih: {revisionAuthenticityFile.name}</p>}
+              </div>
               {revisionError && <p className="text-sm" style={{ color: "var(--color-danger)" }}>{revisionError}</p>}
               {revisionMessage && <p className="text-sm" style={{ color: "var(--color-success)" }}>{revisionMessage}</p>}
               <div className="flex justify-end">
                 <button type="submit" className="btn-primary" disabled={uploadingRevision}>{uploadingRevision ? "Mengirim..." : "Kirim File Revisi"}</button>
               </div>
-            </form>
+              </form>
+            </section>
           )}
-        </section>
+        </div>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -673,6 +777,55 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
         </div>
       )}
     </div>
+  );
+}
+
+function RevisionHistory({ versions }: { versions: NaskahVersion[] }) {
+  return (
+    <section className="card p-6">
+      <div className="mb-5">
+        <h2 className="text-lg font-semibold">Riwayat Revisi Author</h2>
+        <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
+          Dokumen dan catatan perubahan yang pernah dikirim.
+        </p>
+      </div>
+      {versions.length ? (
+        <div className="space-y-4">
+          {versions.map((version, index) => {
+            const fileValue = typeof version.file_draft_naskah === "string" && version.file_draft_naskah.trim() && version.file_draft_naskah !== "Belum diisi"
+              ? version.file_draft_naskah
+              : "";
+            const fileUrl = fileValue ? toPublicDocumentUrl(fileValue) : null;
+            const fileName = fileValue.split("/").pop() || "";
+
+            return (
+              <div key={version.id ?? index} className="rounded-lg border p-4" style={{ borderColor: "var(--color-border)", background: "#fbfcfc" }}>
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+                  <span className="text-sm font-semibold">Revisi {version.versi_ke ?? versions.length - index}</span>
+                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{formatReviewDate(version.created_at)}</span>
+                </div>
+                <div className="pt-3">
+                  <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>File Draft Revisi</span>
+                  {fileUrl ? (
+                    <a href={fileUrl} target="_blank" rel="noreferrer" className="text-sm underline break-all" style={{ color: "var(--color-primary)" }}>
+                      {fileName}
+                    </a>
+                  ) : (
+                    <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>Dokumen belum tersedia.</span>
+                  )}
+                </div>
+                <div className="pt-3">
+                  <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Perubahan</span>
+                  <p className="text-sm leading-6">{version.catatan_perubahan?.trim() || "Tidak ada catatan perubahan"}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada revisi yang dikirim.</p>
+      )}
+    </section>
   );
 }
 
