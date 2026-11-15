@@ -22,17 +22,43 @@ interface ReviewerAssignment {
   nama_penunjuk?: string;
 }
 
+interface EditorAssignment {
+  id: number;
+  naskah_id: number;
+  editor_id: number;
+  nama_editor?: string;
+  email_editor?: string;
+  catatan_instruksi?: string | null;
+  status_editing: "PENDING" | "IN_PROGRESS" | "COMPLETED" | string;
+  ditunjuk_oleh?: number;
+  nama_penunjuk?: string;
+}
+
 interface ReviewResult {
   id?: number;
   catatan_review?: string;
   rekomendasi?: string;
   file_catatan_review?: string | null;
-  created_at?: string;
-  reviewer?: { nama?: string; name?: string } | string;
+  created_at?: string | number;
+  createdAt?: string | number;
+  tanggal_review?: string | number;
+  tanggalReview?: string | number;
+  review_date?: string | number;
+  reviewer?: { nama?: string; name?: string; nama_lengkap?: string; full_name?: string } | string;
   nama_reviewer?: string;
+  namaReviewer?: string;
+  reviewer_name?: string;
+  rekomendasi_review?: string;
+  recommendation?: string;
+  status_review?: string;
+  status_rekomendasi?: string;
+  status_revisi?: string;
+  catatanReview?: string;
+  komentar?: string;
 }
 
 const MAX_REVISION_FILE_SIZE = 50 * 1024 * 1024;
+const LPPM_PRESS_TEMPLATE_URL = process.env.NEXT_PUBLIC_LPPM_PRESS_TEMPLATE_URL || "/template-naskah-lppm-press.docx";
 
 const placeholderReview = {
   note: "Catatan review dari reviewer akan tampil di sini setelah proses review selesai.",
@@ -43,7 +69,7 @@ function reviewResultText(value: unknown): string {
   if (typeof value === "string" || typeof value === "number") return String(value);
   if (!value || typeof value !== "object") return "";
   const record = value as Record<string, unknown>;
-  return String(record.nama ?? record.name ?? record.email ?? "");
+  return String(record.nama ?? record.name ?? record.nama_lengkap ?? record.full_name ?? record.email ?? "");
 }
 
 function InfoRow({ label, value, className = "" }: { label: string; value?: string | null; className?: string }) {
@@ -62,22 +88,26 @@ function InfoRow({ label, value, className = "" }: { label: string; value?: stri
 function formatReviewDeadline(value?: string) {
   if (!value) return "—";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return `${value}`;
   return new Intl.DateTimeFormat("id-ID", {
     dateStyle: "long",
     timeStyle: "short",
   }).format(date);
 }
 
-function formatReviewDate(value?: unknown) {
+function formatReviewDate(value?: unknown): string {
   if (!value) return "—";
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const nestedDate = record.$date ?? record.date ?? record.datetime ?? record.timestamp ?? record.value;
+    return nestedDate !== undefined && nestedDate !== value ? formatReviewDate(nestedDate) : "—";
+  }
   if (typeof value !== "string" && typeof value !== "number") return "—";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
+    dateStyle: "long",
+    timeStyle: "short",
   }).format(date);
 }
 
@@ -89,14 +119,28 @@ function reviewRecommendationColors(value?: string) {
   return getStatusColors(value);
 }
 
-function reviewerNameFromResults(results: ReviewResult[]): string {
+function reviewerNameFromResults(results: ReviewResult[], assignment?: ReviewerAssignment | null): string {
   const latestReview = results[results.length - 1];
-  return latestReview?.nama_reviewer || reviewResultText(latestReview?.reviewer) || "Belum ada reviewer";
+  return latestReview?.nama_reviewer || latestReview?.namaReviewer || latestReview?.reviewer_name || reviewResultText(latestReview?.reviewer) || assignment?.nama_reviewer || (assignment?.reviewer_id ? `User #${assignment.reviewer_id}` : "Belum ada reviewer");
+}
+
+function reviewResultDate(review: ReviewResult): string | number | undefined {
+  return review.created_at ?? review.createdAt ?? review.tanggal_review ?? review.tanggalReview ?? review.review_date;
+}
+
+function reviewResultRecommendation(review: ReviewResult): string | undefined {
+  return review.rekomendasi ?? review.rekomendasi_review ?? review.recommendation ?? review.status_review ?? review.status_rekomendasi ?? review.status_revisi;
 }
 
 function getRevisionVersions(naskah: Naskah): NaskahVersion[] {
   return [...(naskah.versi_naskah ?? [])]
     .filter((version) => version.tahap?.trim().toUpperCase() === "REVISI_DOSEN")
+    .sort((left, right) => (right.versi_ke ?? 0) - (left.versi_ke ?? 0));
+}
+
+function getEditorialVersions(naskah: Naskah): NaskahVersion[] {
+  return [...(naskah.versi_naskah ?? [])]
+    .filter((version) => version.tahap?.trim().toUpperCase() === "DRAFT_LAYOUT_EDITOR")
     .sort((left, right) => (right.versi_ke ?? 0) - (left.versi_ke ?? 0));
 }
 
@@ -115,6 +159,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [deleting, setDeleting] = useState(false);
   const [isLppm, setIsLppm] = useState(false);
   const [reviewers, setReviewers] = useState<User[]>([]);
+  const [editors, setEditors] = useState<User[]>([]);
   const [reviewerId, setReviewerId] = useState("");
   const [deadlineReview, setDeadlineReview] = useState("");
   const [showReviewerModal, setShowReviewerModal] = useState(false);
@@ -122,6 +167,12 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [assignmentError, setAssignmentError] = useState("");
   const [assignmentSuccess, setAssignmentSuccess] = useState("");
   const [reviewerAssignment, setReviewerAssignment] = useState<ReviewerAssignment | null>(null);
+  const [editorAssignment, setEditorAssignment] = useState<EditorAssignment | null>(null);
+  const [editorId, setEditorId] = useState("");
+  const [editorInstruction, setEditorInstruction] = useState("");
+  const [editingStatus, setEditingStatus] = useState<EditorAssignment["status_editing"]>("PENDING");
+  const [showEditorModal, setShowEditorModal] = useState(false);
+  const [assigningEditor, setAssigningEditor] = useState(false);
   const [activeRole, setActiveRole] = useState("");
   const [revisionFile, setRevisionFile] = useState<File | null>(null);
   const [revisionProfileFile, setRevisionProfileFile] = useState<File | null>(null);
@@ -130,6 +181,12 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [revisionError, setRevisionError] = useState("");
   const [revisionMessage, setRevisionMessage] = useState("");
   const [uploadingRevision, setUploadingRevision] = useState(false);
+  const [editorialFile, setEditorialFile] = useState<File | null>(null);
+  const [editorialNote, setEditorialNote] = useState("");
+  const [editorialError, setEditorialError] = useState("");
+  const [editorialMessage, setEditorialMessage] = useState("");
+  const [uploadingEditorial, setUploadingEditorial] = useState(false);
+  const [approvingEditorial, setApprovingEditorial] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
   const [isAssignedReviewer, setIsAssignedReviewer] = useState(false);
@@ -137,6 +194,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const revisionFileInputRef = useRef<HTMLInputElement>(null);
   const revisionProfileFileInputRef = useRef<HTMLInputElement>(null);
   const revisionAuthenticityFileInputRef = useRef<HTMLInputElement>(null);
+  const editorialFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -158,7 +216,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
         const isLppm = currentRole === "LPPM";
         setActiveRole(currentRole);
         const isOwner = String(found?.pengusul_id) === userId;
-        setCanEdit(canManageNaskah(currentRole) && (isLppm || isOwner) && canEditNaskah(found?.status_saat_ini));
+        setCanEdit(canManageNaskah(currentRole) && (isLppm || isOwner) && canEditNaskah(found?.status_saat_ini) && !(currentRole === "AUTHOR" && found?.status_saat_ini?.trim().toUpperCase() === "REVISION_REQUIRED"));
         setCanDelete(canManageNaskah(currentRole) && (isLppm || isOwner));
       } catch {
         setServerError("Tidak bisa memuat detail naskah.");
@@ -188,8 +246,13 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
             })
           )
         );
+        setEditors(
+          (Array.isArray(json.data) ? json.data : []).filter((user) =>
+            user.roles?.some((role) => role.nama_role.trim().toUpperCase() === "EDITOR")
+          )
+        );
       })
-      .catch(() => setAssignmentError("Tidak bisa memuat daftar reviewer."));
+      .catch(() => setAssignmentError("Tidak bisa memuat daftar reviewer dan editor."));
   }, []);
 
   useEffect(() => {
@@ -214,6 +277,27 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
     };
 
     fetchReviewerAssignment();
+  }, [id]);
+
+  useEffect(() => {
+    const fetchEditorAssignment = async () => {
+      try {
+        const response = await fetch(`${API_URL}/penugasan-editor/naskah/${id}`);
+        const json: ApiResponse<EditorAssignment[] | EditorAssignment> = await response.json();
+        const assignment = Array.isArray(json.data) ? json.data[0] ?? null : json.data ?? null;
+
+        setEditorAssignment(assignment);
+        if (assignment) {
+          setEditorId(String(assignment.editor_id));
+          setEditorInstruction(assignment.catatan_instruksi ?? "");
+          setEditingStatus(assignment.status_editing);
+        }
+      } catch {
+        setEditorAssignment(null);
+      }
+    };
+
+    fetchEditorAssignment();
   }, [id]);
 
   const openReviewerModal = () => {
@@ -285,6 +369,91 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
       setAssignmentError(error instanceof Error ? error.message : "Tidak bisa menugaskan reviewer.");
     } finally {
       setAssigningReviewer(false);
+    }
+  };
+
+  const openEditorModal = () => {
+    setAssignmentError("");
+    if (editorAssignment) {
+      setEditorId(String(editorAssignment.editor_id));
+      setEditorInstruction(editorAssignment.catatan_instruksi ?? "");
+      setEditingStatus(editorAssignment.status_editing);
+    } else {
+      setEditorId("");
+      setEditorInstruction("");
+      setEditingStatus("PENDING");
+    }
+    setShowEditorModal(true);
+  };
+
+  const handleAssignEditor = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAssignmentError("");
+    setAssignmentSuccess("");
+
+    if (!naskah || naskah.status_saat_ini?.trim().toUpperCase() !== "APPROVED_FOR_EDIT" || naskah.pake_editor_pribadi) {
+      setAssignmentError("Editor hanya dapat ditunjuk untuk naskah berstatus APPROVED_FOR_EDIT tanpa editor pribadi.");
+      return;
+    }
+    if (!isLppm) {
+      setAssignmentError("Hanya role LPPM yang dapat menugaskan editor.");
+      return;
+    }
+
+    const appointedBy = getSessionValue("user_id");
+    if (!appointedBy) {
+      setAssignmentError("User login tidak ditemukan. Silakan login kembali.");
+      return;
+    }
+    if (!editorId) {
+      setAssignmentError("Editor wajib dipilih.");
+      return;
+    }
+
+    setAssigningEditor(true);
+    try {
+      const isEditing = editorAssignment !== null;
+      const response = await fetch(
+        isEditing ? `${API_URL}/penugasan-editor/${editorAssignment.id}` : `${API_URL}/penugasan-editor`,
+        {
+          method: isEditing ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(isEditing ? {
+            editor_id: Number(editorId),
+            catatan_instruksi: editorInstruction.trim(),
+            status_editing: editingStatus,
+          } : {
+            naskah_id: naskah.id,
+            editor_id: Number(editorId),
+            ditunjuk_oleh: Number(appointedBy),
+            catatan_instruksi: editorInstruction.trim(),
+          }),
+        }
+      );
+      const json: Partial<ApiResponse<unknown>> = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(json.message || "Gagal menyimpan penugasan editor.");
+
+      const [detailResponse, assignmentResponse] = await Promise.all([
+        fetch(`${API_URL}/naskah/${id}`),
+        fetch(`${API_URL}/penugasan-editor/naskah/${id}`),
+      ]);
+      const detailJson: ApiResponse<Naskah> = await detailResponse.json().catch(() => ({}));
+      const assignmentJson: ApiResponse<EditorAssignment[] | EditorAssignment> = await assignmentResponse.json().catch(() => ({}));
+      if (!detailResponse.ok || !detailJson.data) throw new Error("Penugasan berhasil, tetapi detail naskah gagal dimuat ulang.");
+
+      const refreshedAssignment = Array.isArray(assignmentJson.data) ? assignmentJson.data[0] ?? null : assignmentJson.data ?? null;
+      setNaskah(detailJson.data);
+      setReviewResults(Array.isArray(detailJson.data.hasil_review) ? detailJson.data.hasil_review as ReviewResult[] : []);
+      setEditorAssignment(refreshedAssignment);
+      setEditorId(refreshedAssignment ? String(refreshedAssignment.editor_id) : "");
+      setEditorInstruction(refreshedAssignment?.catatan_instruksi ?? "");
+      setEditingStatus(refreshedAssignment?.status_editing ?? "PENDING");
+      setShowEditorModal(false);
+      setAssignmentSuccess(isEditing ? "Penugasan editor berhasil diperbarui." : "Editor berhasil ditunjuk.");
+    } catch (error) {
+      setAssignmentError(error instanceof Error ? error.message : "Tidak bisa menyimpan penugasan editor.");
+    } finally {
+      setAssigningEditor(false);
     }
   };
 
@@ -410,6 +579,135 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
     }
   };
 
+  const handleEditorialFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setEditorialError("");
+    setEditorialMessage("");
+
+    if (file && file.size > MAX_REVISION_FILE_SIZE) {
+      setEditorialFile(null);
+      event.target.value = "";
+      setEditorialError("Ukuran file melebihi batas maksimal 50 MB.");
+      return;
+    }
+
+    setEditorialFile(file);
+  };
+
+  const handleEditorialSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setEditorialError("");
+    setEditorialMessage("");
+
+    const currentRole = getActiveRole()?.trim().toUpperCase() || activeRole;
+    const isPersonalAuthorUpload = currentRole === "AUTHOR" && Boolean(naskah?.pake_editor_pribadi);
+    const canSubmitAsAssignedEditor = currentRole === "EDITOR" && isAssignedEditor;
+
+    if (currentRole === "EDITOR" && !canSubmitAsAssignedEditor) {
+      setEditorialError("Hanya editor yang ditunjuk untuk naskah ini yang dapat mengirim hasil editor.");
+      return;
+    }
+    if (currentRole !== "EDITOR" && currentRole !== "AUTHOR") {
+      setEditorialError("Hanya role EDITOR atau AUTHOR yang dapat mengunggah dokumen editorial.");
+      return;
+    }
+    if (currentRole === "AUTHOR" && !isPersonalAuthorUpload && editorialVersions.length === 0) {
+      setEditorialError("Author hanya dapat mengunggah hasil editor jika menggunakan editor pribadi atau sudah menerima hasil layout editor.");
+      return;
+    }
+
+    const uploadedBy = getSessionValue("user_id");
+    if (!uploadedBy) {
+      setEditorialError("Sesi user tidak ditemukan. Silakan login kembali.");
+      return;
+    }
+    if (!editorialNote.trim()) {
+      setEditorialError("Catatan perubahan wajib diisi.");
+      return;
+    }
+    if (!editorialFile) {
+      setEditorialError("File draft naskah wajib dipilih.");
+      return;
+    }
+
+    setUploadingEditorial(true);
+    try {
+      const formData = new FormData();
+      formData.append("uploaded_by", uploadedBy);
+      formData.append("catatan_perubahan", editorialNote.trim());
+      formData.append("file_draft_naskah", editorialFile);
+      if (currentRole === "AUTHOR") {
+        formData.append("versi_ke", naskah?.pake_editor_pribadi ? "1" : "2");
+      }
+
+      const response = await fetch(`${API_URL}/naskah/${naskah?.id ?? id}/hasil-editor`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload: ApiResponse<Naskah> & { error?: string; errors?: Record<string, string[]> } = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const validationError = payload.errors ? Object.values(payload.errors).flat().join(" ") : "";
+        throw new Error(payload.message || payload.error || validationError || "Gagal mengunggah dokumen editorial.");
+      }
+
+      const refreshedResponse = await fetch(`${API_URL}/naskah/${naskah?.id ?? id}`);
+      const refreshedPayload: ApiResponse<Naskah> = await refreshedResponse.json().catch(() => ({}));
+      if (!refreshedResponse.ok || !refreshedPayload.data) {
+        throw new Error("Dokumen editorial berhasil dikirim, tetapi detail naskah gagal dimuat ulang.");
+      }
+
+      setNaskah(refreshedPayload.data);
+      setReviewResults(Array.isArray(refreshedPayload.data.hasil_review) ? refreshedPayload.data.hasil_review as ReviewResult[] : []);
+      setEditorialFile(null);
+      setEditorialNote("");
+      if (editorialFileInputRef.current) editorialFileInputRef.current.value = "";
+      setEditorialMessage(currentRole === "AUTHOR"
+        ? isPersonalAuthorUpload
+          ? "Naskah editor pribadi berhasil diunggah."
+          : "Versi kedua naskah editorial berhasil diunggah."
+        : "Dokumen editorial berhasil diunggah.");
+    } catch (uploadError) {
+      setEditorialError(uploadError instanceof Error ? uploadError.message : "Tidak bisa mengunggah dokumen editorial.");
+    } finally {
+      setUploadingEditorial(false);
+    }
+  };
+
+  const handleApproveEditorial = async () => {
+    if (activeRole !== "AUTHOR") {
+      setEditorialError("Hanya role AUTHOR yang dapat menyetujui hasil layout editorial.");
+      return;
+    }
+
+    setEditorialError("");
+    setEditorialMessage("");
+    setApprovingEditorial(true);
+    try {
+      const statusData = new FormData();
+      statusData.append("status_saat_ini", "READY_TO_PRINT");
+      const response = await fetch(`${API_URL}/naskah/${naskah?.id ?? id}`, {
+        method: "PUT",
+        body: statusData,
+      });
+      const payload: ApiResponse<unknown> = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || "Gagal menyetujui naskah editorial.");
+
+      const refreshedResponse = await fetch(`${API_URL}/naskah/${naskah?.id ?? id}`);
+      const refreshedPayload: ApiResponse<Naskah> = await refreshedResponse.json().catch(() => ({}));
+      if (!refreshedResponse.ok || !refreshedPayload.data) {
+        throw new Error("Status berhasil diperbarui, tetapi detail naskah gagal dimuat ulang.");
+      }
+
+      setNaskah(refreshedPayload.data);
+      setReviewResults(Array.isArray(refreshedPayload.data.hasil_review) ? refreshedPayload.data.hasil_review as ReviewResult[] : []);
+      setEditorialMessage("Naskah editorial berhasil disetujui dan siap dicetak.");
+    } catch (approveError) {
+      setEditorialError(approveError instanceof Error ? approveError.message : "Tidak bisa menyetujui naskah editorial.");
+    } finally {
+      setApprovingEditorial(false);
+    }
+  };
+
   const updateDeadline = (part: "date" | "time", value: string) => {
     const current = splitDeadline(deadlineReview);
     const nextDate = part === "date" ? value : current.date;
@@ -418,6 +716,15 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   };
 
   const deadlineParts = splitDeadline(deadlineReview);
+  const editorialVersions = naskah ? getEditorialVersions(naskah) : [];
+  const latestEditorialVersion = editorialVersions[0];
+  const sessionUserId = getSessionValue("user_id");
+  const isAssignedEditor = activeRole === "EDITOR"
+    && Boolean(editorAssignment)
+    && editorAssignment?.editor_id === Number(sessionUserId);
+  const isPersonalEditorFlow = activeRole === "AUTHOR"
+    && ["APPROVED_FOR_EDIT", "READY_TO_PRINT"].includes(naskah?.status_saat_ini?.trim().toUpperCase() || "")
+    && Boolean(naskah ? naskah.pake_editor_pribadi : false);
 
   if (loading) {
     return <div className="text-sm" style={{ color: "var(--color-text-muted)" }}>Memuat detail naskah...</div>;
@@ -460,6 +767,17 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
             {isLppm && (
               <button onClick={openReviewerModal} className="btn-primary">
                 {reviewerAssignment ? "Edit Reviewer" : "Pilih Reviewer"}
+              </button>
+            )}
+            {isLppm && naskah.status_saat_ini?.trim().toUpperCase() === "APPROVED_FOR_EDIT" && !naskah.pake_editor_pribadi && (
+              <button
+                onClick={openEditorModal}
+                className={naskah.pake_editor_pribadi ? "btn-secondary opacity-60 cursor-not-allowed" : "btn-primary"}
+                disabled={naskah.pake_editor_pribadi}
+                title={naskah.pake_editor_pribadi ? "Author sudah menggunakan editor pribadi." : undefined}
+                aria-label={naskah.pake_editor_pribadi ? "Editor tidak dapat ditunjuk karena author menggunakan editor pribadi" : undefined}
+              >
+                {naskah.pake_editor_pribadi ? "Editor Pribadi Author" : editorAssignment ? "Edit Editor" : "Tunjuk Editor"}
               </button>
             )}
             {canEdit && <Link href={`/dashboard/naskah/${naskah.id}/edit`} className="btn-edit">Edit</Link>}
@@ -543,8 +861,20 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
-      {(activeRole === "AUTHOR" || activeRole === "USER") && (
-        <div className="space-y-5 mb-5">
+      {editorAssignment && (
+        <div className="card p-6 mb-5">
+          <h2 className="text-lg font-semibold">Detail Editor</h2>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-x-6">
+            <InfoRow label="Editor" value={editorAssignment.nama_editor || `User #${editorAssignment.editor_id}`} />
+            <InfoRow label="Email Editor" value={editorAssignment.email_editor} />
+            <InfoRow label="Status Editing" value={editorAssignment.status_editing} />
+            <InfoRow label="Catatan Instruksi" value={editorAssignment.catatan_instruksi} />
+            <InfoRow label="Ditunjuk Oleh" value={editorAssignment.nama_penunjuk || (editorAssignment.ditunjuk_oleh ? `User #${editorAssignment.ditunjuk_oleh}` : undefined)} />
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-5 mb-5">
           <section className="card p-6">
           <div className="mb-5">
             <h2 className="text-lg font-semibold">Detail Review</h2>
@@ -556,7 +886,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
             <InfoRow
               label="Nama Reviewer"
-              value={reviewerNameFromResults(reviewResults)}
+              value={reviewerNameFromResults(reviewResults, reviewerAssignment)}
             />
             <div className="py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
               <span className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>File Review</span>
@@ -582,17 +912,17 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold">
-                      {review.nama_reviewer || reviewResultText(review.reviewer) || "Reviewer"}
+                      {review.nama_reviewer || review.namaReviewer || review.reviewer_name || reviewResultText(review.reviewer) || "Reviewer"}
                     </span>
-                    {review.rekomendasi && (
-                      <span className="badge" style={reviewRecommendationColors(review.rekomendasi)}>
-                        {reviewRecommendationLabel(review.rekomendasi)}
+                    {reviewResultRecommendation(review) && (
+                      <span className="badge" style={reviewRecommendationColors(reviewResultRecommendation(review))}>
+                        {reviewRecommendationLabel(reviewResultRecommendation(review))}
                       </span>
                     )}
                   </div>
-                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{formatReviewDate(review.created_at)}</span>
+                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{formatReviewDate(reviewResultDate(review))}</span>
                 </div>
-                <p className="text-sm leading-6 pt-3">{review.catatan_review || "-"}</p>
+                <p className="text-sm leading-6 pt-3">{review.catatan_review || review.catatanReview || review.komentar || "-"}</p>
               </div>
             )) : (
               <div className="rounded-lg border p-4" style={{ borderColor: "var(--color-border)", background: "#fbfcfc" }}>
@@ -608,7 +938,136 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
           <RevisionHistory versions={getRevisionVersions(naskah)} />
 
-          {naskah.status_saat_ini?.trim().toUpperCase() === "REVISION_REQUIRED" && (
+          {(activeRole === "EDITOR" || isLppm || (activeRole === "AUTHOR" && (editorialVersions.length > 0 || isPersonalEditorFlow))) && (
+          <section className="card p-6">
+            <div className="mb-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">{isPersonalEditorFlow ? "Unggah Naskah Editor Pribadi" : "Dokumen Naskah Revisi Editorial"}</h2>
+                {naskah.status_saat_ini?.trim().toUpperCase() === "READY_TO_PRINT" && (
+                  <span className="badge" style={getStatusColors("READY_TO_PRINT")}>READY_TO_PRINT</span>
+                )}
+              </div>
+              <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
+                {isPersonalEditorFlow
+                  ? "Unduh template LPPM Press, isi naskah secara mandiri, lalu unggah hasilnya di sini."
+                  : activeRole === "EDITOR" ? "Unggah hasil penyuntingan editorial untuk naskah ini." : "Hasil layout editorial dan catatan perubahan dari editor."}
+              </p>
+            </div>
+
+            {isPersonalEditorFlow && (
+              <a href={LPPM_PRESS_TEMPLATE_URL} download target="_blank" rel="noreferrer" className="btn-secondary mb-5">
+                Unduh Template LPPM Press
+              </a>
+            )}
+
+            {!isPersonalEditorFlow && latestEditorialVersion && (
+              <div className="rounded-lg border p-4 mb-5" style={{ borderColor: "var(--color-border)", background: "#fbfcfc" }}>
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+                  <span className="text-sm font-semibold">{isPersonalEditorFlow ? "Naskah Editor Pribadi Terbaru" : "Hasil Layout Editorial Terbaru"}</span>
+                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{formatReviewDate(latestEditorialVersion.created_at)}</span>
+                </div>
+                <div className="pt-3">
+                  <RevisionFile label="File Hasil Layout" value={latestEditorialVersion.file_draft_naskah} />
+                </div>
+                <div className="pt-3">
+                  <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Perubahan Editor</span>
+                  <p className="text-sm leading-6">{latestEditorialVersion.catatan_perubahan?.trim() || "Tidak ada catatan perubahan"}</p>
+                </div>
+              </div>
+            )}
+
+            {(isAssignedEditor || (activeRole === "AUTHOR" && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT")) && (
+              <form onSubmit={handleEditorialSubmit} className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" htmlFor="editorial-note">
+                    Catatan Perubahan
+                  </label>
+                  <textarea
+                    id="editorial-note"
+                    className={`input-base min-h-28 ${editorialError && !editorialNote.trim() ? "error" : ""}`}
+                    value={editorialNote}
+                    onChange={(event) => setEditorialNote(event.target.value)}
+                    placeholder={isPersonalEditorFlow ? "Jelaskan perubahan pada naskah editor pribadi..." : "Jelaskan perubahan editorial yang dilakukan..."}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" htmlFor="editorial-file">
+                    File Draft Naskah
+                  </label>
+                  <input
+                    ref={editorialFileInputRef}
+                    id="editorial-file"
+                    type="file"
+                    className={`input-base ${editorialError && !editorialFile ? "error" : ""}`}
+                    onChange={handleEditorialFileChange}
+                    required
+                  />
+                  <p className="text-xs mt-1.5" style={{ color: "var(--color-text-muted)" }}>
+                    Maksimal ukuran file: 50 MB.
+                  </p>
+                  {editorialFile && <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>File dipilih: {editorialFile.name}</p>}
+                </div>
+                {editorialError && <p className="text-sm" style={{ color: "var(--color-danger)" }}>{editorialError}</p>}
+                {editorialMessage && <p className="text-sm" style={{ color: "var(--color-success)" }}>{editorialMessage}</p>}
+                <div className="flex justify-end">
+                  <button type="submit" className="btn-primary" disabled={uploadingEditorial}>
+                    {uploadingEditorial ? "Mengunggah..." : isPersonalEditorFlow ? "Upload Naskah Editor Pribadi" : activeRole === "AUTHOR" ? "Upload Versi Kedua" : "Unggah Dokumen Editorial"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {activeRole === "AUTHOR" && !isPersonalEditorFlow && (
+              <>
+                <div className="flex items-center gap-3 my-5" style={{ color: "var(--color-text-muted)" }}>
+                  <div className="h-px flex-1" style={{ background: "var(--color-border)" }} />
+                  <span className="text-sm font-medium">atau</span>
+                  <div className="h-px flex-1" style={{ background: "var(--color-border)" }} />
+                </div>
+                <div className="flex flex-col items-start gap-2">
+                  <button type="button" className="btn-primary" onClick={handleApproveEditorial} disabled={approvingEditorial || naskah.status_saat_ini?.trim().toUpperCase() === "READY_TO_PRINT"}>
+                    {approvingEditorial ? "Menyetujui..." : "Approve Naskah Editorial"}
+                  </button>
+                  <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                    Status naskah akan diubah menjadi READY_TO_PRINT.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {activeRole !== "EDITOR" && editorialMessage && <p className="text-sm mb-5" style={{ color: "var(--color-success)" }}>{editorialMessage}</p>}
+
+            {!isPersonalEditorFlow && <div className="border-t pt-5" style={{ borderColor: "var(--color-border)" }}>
+              <h3 className="font-semibold mb-4">Riwayat Upload Editorial</h3>
+              {editorialVersions.length ? (
+                <div className="space-y-4">
+                  {editorialVersions.map((version, index) => (
+                    <div key={version.id ?? index} className="rounded-lg border p-4" style={{ borderColor: "var(--color-border)", background: "#fbfcfc" }}>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+                        <span className="text-sm font-semibold">Upload Editorial {version.versi_ke ?? editorialVersions.length - index}</span>
+                        <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{formatReviewDate(version.created_at)}</span>
+                      </div>
+                      <div className="pt-3">
+                        <RevisionFile label="File Draft Naskah" value={version.file_draft_naskah} />
+                      </div>
+                      <div className="pt-3">
+                        <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Perubahan</span>
+                        <p className="text-sm leading-6">{version.catatan_perubahan?.trim() || "Tidak ada catatan perubahan"}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada upload editorial.</p>
+              )}
+            </div>}
+          </section>
+          )}
+
+          {revisionMessage && <p className="rounded-lg border p-4 text-sm" style={{ background: "var(--color-success-pale)", color: "var(--color-success)", borderColor: "#b8d9c3" }}>{revisionMessage}</p>}
+
+          {(activeRole === "AUTHOR" || activeRole === "USER") && naskah.status_saat_ini?.trim().toUpperCase() === "REVISION_REQUIRED" && (
             <section className="card p-6">
               <form onSubmit={handleRevisionSubmit} className="space-y-4">
               <div>
@@ -681,15 +1140,13 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
                 {revisionAuthenticityFile && <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>File dipilih: {revisionAuthenticityFile.name}</p>}
               </div>
               {revisionError && <p className="text-sm" style={{ color: "var(--color-danger)" }}>{revisionError}</p>}
-              {revisionMessage && <p className="text-sm" style={{ color: "var(--color-success)" }}>{revisionMessage}</p>}
               <div className="flex justify-end">
                 <button type="submit" className="btn-primary" disabled={uploadingRevision}>{uploadingRevision ? "Mengirim..." : "Kirim File Revisi"}</button>
               </div>
               </form>
             </section>
           )}
-        </div>
-      )}
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/dashboard/naskah" className="btn-secondary">
@@ -776,6 +1233,61 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
       )}
+
+      {showEditorModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowEditorModal(false)} />
+          <div className="relative card p-6 w-full max-w-lg">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold">{editorAssignment ? "Edit Editor" : "Tunjuk Editor"}</h2>
+              <button type="button" onClick={() => setShowEditorModal(false)} className="text-xl" aria-label="Tutup">×</button>
+            </div>
+            <p className="text-sm mb-5" style={{ color: "var(--color-text-muted)" }}>{naskah.judul_naskah}</p>
+            {assignmentError && (
+              <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: "var(--color-danger-pale)", color: "var(--color-danger)" }}>
+                {assignmentError}
+              </div>
+            )}
+            <form onSubmit={handleAssignEditor} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="editor-id">Editor</label>
+                <select id="editor-id" className="input-base" value={editorId} onChange={(event) => setEditorId(event.target.value)}>
+                  <option value="">Pilih editor</option>
+                  {editors.map((editor) => (
+                    <option key={editor.id} value={editor.id}>{editor.nama} ({editor.email})</option>
+                  ))}
+                </select>
+              </div>
+              {editorAssignment && (
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" htmlFor="editing-status">Status Editing</label>
+                  <select id="editing-status" className="input-base" value={editingStatus} onChange={(event) => setEditingStatus(event.target.value)}>
+                    <option value="PENDING">PENDING</option>
+                    <option value="IN_PROGRESS">IN_PROGRESS</option>
+                    <option value="COMPLETED">COMPLETED</option>
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="editor-instruction">Catatan Instruksi <span className="font-normal" style={{ color: "var(--color-text-muted)" }}>(opsional)</span></label>
+                <textarea
+                  id="editor-instruction"
+                  className="input-base min-h-28"
+                  value={editorInstruction}
+                  onChange={(event) => setEditorInstruction(event.target.value)}
+                  placeholder="Tulis instruksi untuk editor..."
+                />
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button type="button" onClick={() => setShowEditorModal(false)} className="btn-secondary">Batal</button>
+                <button type="submit" className="btn-primary" disabled={assigningEditor}>
+                  {assigningEditor ? "Menyimpan..." : editorAssignment ? "Simpan Perubahan" : "Tunjuk Editor"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -792,12 +1304,6 @@ function RevisionHistory({ versions }: { versions: NaskahVersion[] }) {
       {versions.length ? (
         <div className="space-y-4">
           {versions.map((version, index) => {
-            const fileValue = typeof version.file_draft_naskah === "string" && version.file_draft_naskah.trim() && version.file_draft_naskah !== "Belum diisi"
-              ? version.file_draft_naskah
-              : "";
-            const fileUrl = fileValue ? toPublicDocumentUrl(fileValue) : null;
-            const fileName = fileValue.split("/").pop() || "";
-
             return (
               <div key={version.id ?? index} className="rounded-lg border p-4" style={{ borderColor: "var(--color-border)", background: "#fbfcfc" }}>
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
@@ -805,14 +1311,7 @@ function RevisionHistory({ versions }: { versions: NaskahVersion[] }) {
                   <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{formatReviewDate(version.created_at)}</span>
                 </div>
                 <div className="pt-3">
-                  <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>File Draft Revisi</span>
-                  {fileUrl ? (
-                    <a href={fileUrl} target="_blank" rel="noreferrer" className="text-sm underline break-all" style={{ color: "var(--color-primary)" }}>
-                      {fileName}
-                    </a>
-                  ) : (
-                    <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>Dokumen belum tersedia.</span>
-                  )}
+                  <RevisionFile label="File Draft Revisi" value={version.file_draft_naskah} />
                 </div>
                 <div className="pt-3">
                   <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Perubahan</span>
@@ -829,6 +1328,25 @@ function RevisionHistory({ versions }: { versions: NaskahVersion[] }) {
   );
 }
 
+function RevisionFile({ label, value }: { label: string; value?: string | null }) {
+  const fileValue = typeof value === "string" && value.trim() && value !== "Belum diisi" ? value : "";
+  const fileUrl = fileValue ? toPublicDocumentUrl(fileValue) : null;
+  const fileName = fileValue.split("/").pop() || "";
+
+  return (
+    <div>
+      <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>{label}</span>
+      {fileUrl ? (
+        <a href={fileUrl} download={fileName} target="_blank" rel="noreferrer" className="btn-secondary mt-1 w-full justify-center">
+          Unduh {fileName}
+        </a>
+      ) : (
+        <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>Dokumen belum tersedia.</span>
+      )}
+    </div>
+  );
+}
+
 function NaskahDocument({ label, url }: { label: string; url: string | null }) {
   const fileName = url?.split("/").pop() || "";
 
@@ -840,8 +1358,8 @@ function NaskahDocument({ label, url }: { label: string; url: string | null }) {
           <p className="text-xs mt-1 truncate" style={{ color: "var(--color-text-muted)" }} title={fileName}>
             {fileName}
           </p>
-          <a href={url} target="_blank" rel="noreferrer" className="btn-secondary mt-3 w-full justify-center">
-            Buka Dokumen
+          <a href={url} download={fileName} target="_blank" rel="noreferrer" className="btn-secondary mt-3 w-full justify-center">
+            Unduh Dokumen
           </a>
         </>
       ) : (

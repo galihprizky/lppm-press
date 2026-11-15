@@ -107,6 +107,9 @@ export function getStatusColors(status?: string | null): StatusColors | undefine
   if (["APPROVED", "PUBLISHED", "DITERIMA"].includes(normalizedStatus)) {
     return { background: "#eafaf1", color: "#1e8449", border: "1.5px solid #b8d9c3", borderColor: "#b8d9c3" };
   }
+  if (normalizedStatus === "READY_TO_PRINT") {
+    return { background: "#e8f7f5", color: "#087f73", border: "1.5px solid #9edbd4", borderColor: "#9edbd4" };
+  }
   if (["REVIEW", "UNDER_REVIEW"].includes(normalizedStatus)) {
     return { background: "#fff8cc", color: "#9a6700", border: "1.5px solid #e8c84a", borderColor: "#e8c84a" };
   }

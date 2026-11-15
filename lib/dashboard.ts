@@ -17,6 +17,8 @@ export async function fetchDashboardData(request: DashboardRequest): Promise<Das
     ? request.userId ? `/naskah/pengusul/${request.userId}` : null
     : request.role === "REVIEWER"
       ? request.userId ? `/naskah/reviewer/${request.userId}` : null
+      : request.role === "EDITOR"
+        ? request.userId ? `/naskah/editor/${request.userId}` : null
       : "/naskah";
 
   if (!endpoint) return { naskah: [] };

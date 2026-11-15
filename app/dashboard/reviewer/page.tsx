@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { getStatusColors } from "@/app/dashboard/naskah/types";
 import { fetchReviewerNaskahList } from "@/lib/reviewer";
 import { API_URL } from "@/lib/config";
 import { getNaskahDocument } from "@/lib/documents";
@@ -19,6 +20,7 @@ interface ReviewComment {
   author: string;
   text: string;
   createdAt: string;
+  recommendation?: string;
 }
 
 interface ReviewSubmission {
@@ -47,17 +49,29 @@ function displayText(value: unknown): string {
   if (!value || typeof value !== "object") return "-";
 
   const record = value as Record<string, unknown>;
-  for (const key of ["nama", "name", "nama_role", "title", "label", "value"]) {
+  for (const key of ["nama", "name", "nama_reviewer", "nama_lengkap", "full_name", "username", "nama_role", "title", "label", "value", "email"]) {
     if (typeof record[key] === "string" || typeof record[key] === "number") {
       return String(record[key]);
     }
   }
+  for (const key of ["reviewer", "user", "pengguna", "data"]) {
+    const nestedValue = displayText(record[key]);
+    if (nestedValue !== "-") return nestedValue;
+  }
   return "-";
 }
 
-function formatDate(value?: unknown) {
+function formatDate(value?: unknown): string {
   if (!value) return "-";
-  const dateValue = typeof value === "string" || typeof value === "number" || value instanceof Date ? value : displayText(value);
+  let dateValue: string | number | Date;
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    const nestedDate = record.$date ?? record.date ?? record.datetime ?? record.timestamp ?? record.value;
+    if (nestedDate === undefined || nestedDate === value) return displayText(value);
+    dateValue = nestedDate instanceof Date || typeof nestedDate === "string" || typeof nestedDate === "number" ? nestedDate : displayText(nestedDate);
+  } else {
+    dateValue = typeof value === "string" || typeof value === "number" || value instanceof Date ? value : displayText(value);
+  }
   const date = new Date(dateValue);
   return Number.isNaN(date.getTime()) ? displayText(value) : new Intl.DateTimeFormat("id-ID", { dateStyle: "long" }).format(date);
 }
@@ -79,13 +93,21 @@ function normalizeComments(value: unknown): ReviewComment[] {
   if (!Array.isArray(value)) return [];
   return value.map((item, index) => {
     const comment = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    const authorValue = displayText(comment.nama_reviewer ?? comment.namaReviewer ?? comment.reviewer_name ?? comment.reviewer ?? comment.author);
+    const recommendation = displayText(comment.rekomendasi ?? comment.rekomendasi_review ?? comment.recommendation ?? comment.status_review ?? comment.status_rekomendasi ?? comment.status_revisi ?? comment.keputusan);
+    const dateValue = comment.created_at ?? comment.createdAt ?? comment.tanggal_review ?? comment.tanggalReview ?? comment.review_date ?? comment.reviewDate ?? comment.tgl_review ?? comment.tanggal ?? comment.date;
     return {
       id: typeof comment.id === "number" ? comment.id : Date.now() + index,
-      author: displayText(comment.nama_reviewer ?? comment.reviewer ?? comment.author) || "Reviewer",
-      text: displayText(comment.catatan_review ?? comment.text),
-      createdAt: displayText(comment.created_at ?? comment.createdAt),
+      author: authorValue === "-" ? "Reviewer" : authorValue,
+      text: displayText(comment.catatan_review ?? comment.catatanReview ?? comment.komentar ?? comment.text),
+      createdAt: formatDate(dateValue),
+      recommendation: recommendation === "-" ? undefined : recommendation,
     };
   });
+}
+
+function recommendationLabel(value?: string) {
+  return value?.trim().toUpperCase() || "";
 }
 
 export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
@@ -170,6 +192,7 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
         author: "Saya",
         text: comment.trim(),
         createdAt: new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date()),
+        recommendation: "REVISI_MINOR",
       };
       setReviews((current) => current.map((review) => review.id === selectedReview.id ? { ...review, comments: [...review.comments, nextComment] } : review));
       setComment("");
@@ -258,7 +281,10 @@ export default function ReviewerPage({ reviewId }: { reviewId?: string } = {}) {
             {selectedReview.comments.map((item) => (
               <div key={item.id} className="p-4 rounded-lg" style={{ background: "var(--color-bg)" }}>
                 <div className="flex items-center justify-between gap-3 mb-2">
-                  <span className="text-sm font-semibold">{item.author}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold">{item.author}</span>
+                    {item.recommendation && <span className="badge" style={getStatusColors(item.recommendation)}>{recommendationLabel(item.recommendation)}</span>}
+                  </div>
                   <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{item.createdAt}</span>
                 </div>
                 <p className="text-sm leading-6">{item.text}</p>

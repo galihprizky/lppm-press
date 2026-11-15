@@ -43,9 +43,11 @@ export default function DashboardPage() {
   const statusCount = (status: string) =>
     naskah.filter((item) => item.status_saat_ini === status).length;
 
+  const isEditor = activeRole === "EDITOR";
+
   const stats: StatCard[] = [
     { label: "Total Naskah", value: naskah.length, color: "var(--color-primary)", bg: "var(--color-primary-pale)" },
-    { label: "Submitted", value: statusCount("SUBMITTED"), color: "#1565c0", bg: "#e8f4fd" },
+    { label: isEditor ? "Approved For Edit" : "Submitted", value: statusCount(isEditor ? "APPROVED_FOR_EDIT" : "SUBMITTED"), color: "#1565c0", bg: "#e8f4fd" },
     { label: "Under Review", value: statusCount("UNDER_REVIEW"), color: "#b7770d", bg: "#fef9e7" },
     { label: "Revision Required", value: statusCount("REVISION_REQUIRED"), color: "#8e44ad", bg: "#fdf2f8" },
     { label: "Published", value: statusCount("PUBLISHED"), color: "#1e8449", bg: "#eafaf1" },

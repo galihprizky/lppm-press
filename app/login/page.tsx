@@ -252,11 +252,6 @@ export default function LoginPage() {
             </Link>
           </p>
 
-          <div className="mt-8 p-4 rounded-lg" style={{ background: "var(--color-primary-pale)", border: "1px solid var(--color-border)" }}>
-            <p className="text-xs font-semibold mb-2" style={{ color: "var(--color-primary)" }}>Akun Demo:</p>
-            <p className="text-xs font-mono" style={{ color: "var(--color-text-muted)" }}>Email: admin@kampus.ac.id</p>
-            <p className="text-xs font-mono" style={{ color: "var(--color-text-muted)" }}>Password: admin123</p>
-          </div>
         </div>
       </div>
     </div>

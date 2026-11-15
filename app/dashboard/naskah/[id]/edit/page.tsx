@@ -65,7 +65,7 @@ export default function EditNaskahPage({ params }: { params: Promise<{ id: strin
         const activeRole = getActiveRole()?.trim().toUpperCase();
         const isLppm = activeRole === "LPPM";
         const isOwner = String(found.pengusul_id) === userId;
-        if (!canManageNaskah(activeRole) || (!isLppm && !isOwner) || !canEditNaskah(found.status_saat_ini)) {
+        if (!canManageNaskah(activeRole) || (!isLppm && !isOwner) || !canEditNaskah(found.status_saat_ini) || (activeRole === "AUTHOR" && found.status_saat_ini?.trim().toUpperCase() === "REVISION_REQUIRED")) {
           setServerError("Naskah ini belum dapat diedit pada status atau role aktif saat ini.");
           return;
         }

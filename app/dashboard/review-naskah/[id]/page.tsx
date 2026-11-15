@@ -22,6 +22,8 @@ interface ReviewComment {
 interface ReviewerAssignment {
   id: number;
   reviewer_id: number;
+  nama_reviewer?: string;
+  reviewer?: unknown;
   deadline_review?: string;
   status_penugasan?: string;
 }
@@ -33,8 +35,12 @@ function displayText(value: unknown): string {
   if (!value || typeof value !== "object") return "-";
 
   const record = value as Record<string, unknown>;
-  for (const key of ["nama", "name", "title", "label", "value"]) {
+  for (const key of ["nama", "nama_reviewer", "namaReviewer", "nama_user", "nama_lengkap", "full_name", "fullName", "username", "name", "title", "label", "value", "email"]) {
     if (typeof record[key] === "string" || typeof record[key] === "number") return String(record[key]);
+  }
+  for (const key of ["user", "pengguna", "reviewer", "data"]) {
+    const nestedValue = displayText(record[key]);
+    if (nestedValue !== "-") return nestedValue;
   }
   return "-";
 }
@@ -44,11 +50,28 @@ function DetailRow({ label, value, className = "" }: { label: string; value?: un
   return <div className={`py-3 border-b ${className}`} style={{ borderColor: "var(--color-border)" }}><span className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>{label}</span><span className="block text-sm">{text}</span></div>;
 }
 
-function formatDate(value?: unknown) {
+function formatDate(value?: unknown): string {
   if (!value) return "-";
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const nestedDate = record.$date ?? record.date ?? record.datetime ?? record.timestamp ?? record.value;
+    return nestedDate !== undefined && nestedDate !== value ? formatDate(nestedDate) : displayText(value);
+  }
   if (typeof value !== "string" && typeof value !== "number") return displayText(value);
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat("id-ID", { dateStyle: "long" }).format(date);
+}
+
+function formatReviewDateTime(value?: unknown): string {
+  if (!value) return "-";
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const nestedDate = record.$date ?? record.date ?? record.datetime ?? record.timestamp ?? record.value;
+    return nestedDate !== undefined && nestedDate !== value ? formatReviewDateTime(nestedDate) : displayText(value);
+  }
+  if (typeof value !== "string" && typeof value !== "number") return displayText(value);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short" }).format(date);
 }
 
 function formatFileSize(value?: unknown): string | undefined {
@@ -61,6 +84,22 @@ function formatFileSize(value?: unknown): string | undefined {
 function formatReviewStatus(value?: string | null): string {
   if (!value) return "-";
   return value.trim().toUpperCase().replace(/\s+/g, "_").replace("REVISI_MAYOR", "REVISI_MAJOR");
+}
+
+function reviewFieldText(value: unknown): string | undefined {
+  if (typeof value === "string" && value.trim()) return value;
+  if (typeof value === "object") {
+    const text = displayText(value);
+    return text === "-" ? undefined : text;
+  }
+  return undefined;
+}
+
+function firstReviewField(review: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (review[key] !== undefined && review[key] !== null && review[key] !== "") return review[key];
+  }
+  return undefined;
 }
 
 function statusForRecommendation(value: string): string {
@@ -82,21 +121,24 @@ function normalizeReviewComments(value: unknown): ReviewComment[] {
   return value.flatMap((item, index) => {
     if (!item || typeof item !== "object") return [];
     const review = item as Record<string, unknown>;
-    const reviewer = review.reviewer;
-    const reviewerName: string = review.nama_reviewer ? displayText(review.nama_reviewer) : displayText(reviewer);
-    const text = typeof review.catatan_review === "string" ? review.catatan_review : "";
-    const fileValue = typeof review.file_catatan_review === "string" ? review.file_catatan_review : "";
+    const reviewerName = displayText(firstReviewField(review, ["nama_reviewer", "namaReviewer", "reviewer_name", "reviewerName", "reviewer", "user", "pengguna"]));
+    const recommendation = reviewFieldText(firstReviewField(review, ["rekomendasi", "rekomendasi_review", "recommendation", "status_review", "status_rekomendasi", "status_rekomendasi_review", "status_revisi", "statusRevisi", "keputusan"]));
+    const textValue = firstReviewField(review, ["catatan_review", "catatanReview", "komentar", "comment", "text"]);
+    const text = typeof textValue === "string" ? textValue : "";
+    const fileValue = firstReviewField(review, ["file_catatan_review", "fileCatatanReview"]);
+    const filePath = typeof fileValue === "string" ? fileValue : "";
+    const reviewDate = firstReviewField(review, ["created_at", "createdAt", "tanggal_review", "tanggalReview", "review_date", "reviewDate", "tgl_review", "tanggal", "date", "updated_at"]);
     if (!text.trim()) return [];
 
     return [{
       id: typeof review.id === "number" ? review.id : index,
-      author: reviewerName || "Reviewer",
+      author: reviewerName === "-" ? "Reviewer" : reviewerName,
       text,
-      createdAt: formatDate(review.created_at),
-      fileUrl: fileValue ? toPublicDocumentUrl(fileValue) : undefined,
-      fileName: fileValue.split("/").pop() || undefined,
+      createdAt: formatReviewDateTime(reviewDate),
+      fileUrl: filePath ? toPublicDocumentUrl(filePath) : undefined,
+      fileName: filePath.split("/").pop() || undefined,
       fileSize: formatFileSize(review.file_size ?? review.ukuran_file),
-      recommendation: typeof review.rekomendasi === "string" ? review.rekomendasi : undefined,
+      recommendation,
     }];
   });
 }
@@ -134,7 +176,6 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
         if (!response.ok) throw new Error(payload.message || "Gagal memuat detail naskah.");
         setNaskah(payload.data ?? null);
         const loadedComments = normalizeReviewComments(payload.data?.hasil_review);
-        setComments(loadedComments);
         const hasRevision = payload.data ? getRevisionVersions(payload.data).length > 0 : false;
         const isApprovedForEdit = formatReviewStatus(payload.data?.status_saat_ini) === "APPROVED_FOR_EDIT";
         setShowStatusUpdate(hasRevision && !isApprovedForEdit);
@@ -144,6 +185,14 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
         const reviewerId = Number(getSessionValue("user_id"));
         const currentAssignment = (assignmentPayload.data ?? []).find((item) => item.reviewer_id === reviewerId) ?? null;
         setAssignment(currentAssignment);
+        const fallbackAuthor = displayText(currentAssignment?.nama_reviewer ?? currentAssignment?.reviewer);
+        const sessionAuthor = getSessionValue("user_name") || "Reviewer";
+        const fallbackRecommendation = formatReviewStatus(payload.data?.status_saat_ini) === "APPROVED_FOR_EDIT" ? "DITERIMA" : undefined;
+        setComments(loadedComments.map((item) => ({
+          ...item,
+          author: item.author === "Reviewer" ? (fallbackAuthor !== "-" ? fallbackAuthor : sessionAuthor) : item.author,
+          recommendation: item.recommendation || fallbackRecommendation,
+        })));
         if (!currentAssignment) throw new Error("Naskah ini belum ditugaskan kepada akun reviewer Anda.");
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Tidak bisa memuat detail naskah.");
@@ -202,21 +251,16 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
       setReviewFile(null);
       if (reviewFileInputRef.current) reviewFileInputRef.current.value = "";
 
-      if (formatReviewStatus(recommendation) === "DITERIMA") {
-        setShowStatusUpdate(false);
-        setSubmitMessage("Hasil review berhasil disimpan. Tombol update status akan muncul setelah author mengirim revisi.");
-      } else {
-        const status = statusForRecommendation(recommendation);
-        const statusData = new FormData();
-        statusData.append("status_saat_ini", status);
-        const statusResponse = await fetch(`${API_URL}/naskah/${id}`, { method: "PUT", body: statusData });
-        const statusPayload: ApiResponse<unknown> = await statusResponse.json().catch(() => ({}));
-        if (!statusResponse.ok) throw new Error(statusPayload.message || "Komentar tersimpan, tetapi status naskah gagal diperbarui.");
+      const status = statusForRecommendation(recommendation);
+      const statusData = new FormData();
+      statusData.append("status_saat_ini", status);
+      const statusResponse = await fetch(`${API_URL}/naskah/${id}`, { method: "PUT", body: statusData });
+      const statusPayload: ApiResponse<unknown> = await statusResponse.json().catch(() => ({}));
+      if (!statusResponse.ok) throw new Error(statusPayload.message || "Komentar tersimpan, tetapi status naskah gagal diperbarui.");
 
-        setNaskah((current) => current ? { ...current, status_saat_ini: status } : current);
-        setShowStatusUpdate(false);
-        setSubmitMessage(`Hasil review dan status ${formatReviewStatus(status)} berhasil disimpan.`);
-      }
+      setNaskah((current) => current ? { ...current, status_saat_ini: status } : current);
+      setShowStatusUpdate(false);
+      setSubmitMessage(`Hasil review dan status ${formatReviewStatus(status)} berhasil disimpan.`);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Tidak bisa menyimpan hasil review.");
     } finally {
@@ -323,7 +367,7 @@ export default function ReviewNaskahRoute({ params }: { params: Promise<{ id: st
             </button>
           </div>
         )}
-        <div className="space-y-3 mb-6">{comments.map((item) => <div key={item.id} className="rounded-lg border p-5" style={{ background: "#fbfcfc", borderColor: "var(--color-border)" }}><div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b" style={{ borderColor: "var(--color-border)" }}><span className="text-base font-semibold">{item.author}</span><span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{item.createdAt}</span></div><p className="text-base leading-6 pt-4">{item.text}</p>{item.fileUrl && <a href={item.fileUrl} download={item.fileName} target="_blank" rel="noreferrer" className="mt-5 flex w-full max-w-sm items-center gap-3 rounded-lg border p-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md" style={{ background: "#eef5ff", color: "#2563eb" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></svg></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.fileName || "File catatan review"}</span><span className="block text-xs" style={{ color: "var(--color-text-muted)" }}>{item.fileSize || "Dokumen review"}</span></span><span className="text-sm font-semibold" style={{ color: "var(--color-primary)" }}>Unduh</span></a>}</div>)}{comments.length === 0 && <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada komentar review.</p>}</div>
+        <div className="space-y-3 mb-6">{comments.map((item) => <div key={item.id} className="rounded-lg border p-5" style={{ background: "#fbfcfc", borderColor: "var(--color-border)" }}><div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b"><div className="flex flex-wrap items-center gap-2"><span className="text-base font-semibold">{item.author}</span>{item.recommendation && <span className="badge" style={getStatusColors(item.recommendation)}>{item.recommendation.trim().toUpperCase()}</span>}</div><span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{item.createdAt}</span></div><p className="text-base leading-6 pt-4">{item.text}</p>{item.fileUrl && <a href={item.fileUrl} download={item.fileName} target="_blank" rel="noreferrer" className="mt-5 flex w-full max-w-sm items-center gap-3 rounded-lg border p-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md" style={{ background: "#eef5ff", color: "#2563eb" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12V8z" /><path d="M14 2v6h6M8 13h8M8 17h6" /></svg></span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{item.fileName || "File catatan review"}</span><span className="block text-xs" style={{ color: "var(--color-text-muted)" }}>{item.fileSize || "Dokumen review"}</span></span><span className="text-sm font-semibold" style={{ color: "var(--color-primary)" }}>Unduh</span></a>}</div>)}{comments.length === 0 && <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada komentar review.</p>}</div>
         {comments.length > 0 && <p className="mb-5 rounded-lg border p-4 text-sm" style={{ background: "#eff6ff", color: "#3656c8", borderColor: "#cfe0ff" }}>Hasil review sudah dikirim. Form komentar hanya dapat digunakan satu kali untuk penugasan ini.</p>}
         {comments.length === 0 && <form onSubmit={handleCommentSubmit} className="space-y-3" aria-disabled={assignment.status_penugasan !== "ACCEPTED"}>
           <label className="block text-sm font-medium" htmlFor="review-comment">Tambah komentar</label>
@@ -370,6 +414,10 @@ function RevisionDocumentSection({ versions }: { versions: NaskahVersion[] }) {
         const note = version.catatan_perubahan?.trim() || "Tidak ada catatan perubahan";
         return <div key={version.id ?? index} className="border-b pb-5 last:border-b-0 last:pb-0" style={{ borderColor: "var(--color-border)" }}>
           {fileUrl ? <DocumentFileRow fileName={fileName} url={fileUrl} revision /> : <p className="text-sm mb-3" style={{ color: "var(--color-text-muted)" }}>Belum ada dokumen revisi</p>}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <RevisionFile label="Profil Penulis" value={version.file_profile_penulis} />
+            <RevisionFile label="Surat Keaslian" value={version.file_surat_keaslian} />
+          </div>
           <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--color-border)" }}>
             <span className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Perubahan dari Author</span>
             <p className="review-author-note text-sm leading-6">{note}</p>
@@ -378,6 +426,17 @@ function RevisionDocumentSection({ versions }: { versions: NaskahVersion[] }) {
       })}
     </div> : <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada dokumen revisi</p>}
   </section>;
+}
+
+function RevisionFile({ label, value }: { label: string; value?: string | null }) {
+  const fileValue = typeof value === "string" && value.trim() && value !== "Belum diisi" ? value : "";
+  const fileUrl = fileValue ? toPublicDocumentUrl(fileValue) : null;
+  const fileName = fileValue.split("/").pop() || "";
+
+  return <div className="rounded-lg border p-3" style={{ borderColor: "var(--color-border)" }}>
+    <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>{label}</span>
+    {fileUrl ? <a href={fileUrl} target="_blank" rel="noreferrer" className="text-sm underline break-all" style={{ color: "var(--color-primary)" }}>{fileName}</a> : <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum tersedia</span>}
+  </div>;
 }
 
 function DocumentFileRow({ fileName, url, revision = false }: { fileName: string; url: string; revision?: boolean }) {
