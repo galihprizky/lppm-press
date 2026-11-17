@@ -249,7 +249,7 @@ export default function NaskahPage() {
             >
               <option value="">Semua Status</option>
               {STATUS_SAAT_INI_OPTIONS.map((item) => (
-                <option key={item} value={item}>{item}</option>
+                <option key={item} value={item}>{formatStatusLabel(item)}</option>
               ))}
             </select>
 

@@ -72,6 +72,7 @@ export const STATUS_SAAT_INI_OPTIONS = [
   "SUBMITTED",
   "UNDER_REVIEW",
   "REVISION_REQUIRED",
+  "READY_TO_PRINT",
   "PUBLISHED",
   "REJECTED",
 ] as const;

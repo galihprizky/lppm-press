@@ -140,7 +140,10 @@ function getRevisionVersions(naskah: Naskah): NaskahVersion[] {
 
 function getEditorialVersions(naskah: Naskah): NaskahVersion[] {
   return [...(naskah.versi_naskah ?? [])]
-    .filter((version) => version.tahap?.trim().toUpperCase() === "DRAFT_LAYOUT_EDITOR")
+    .filter((version) => {
+      const stage = version.tahap?.trim().toUpperCase() || "";
+      return stage === "DRAFT_LAYOUT_EDITOR" || stage === "HASIL_EDITOR" || stage === "EDITORIAL";
+    })
     .sort((left, right) => (right.versi_ke ?? 0) - (left.versi_ke ?? 0));
 }
 
@@ -637,7 +640,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
       formData.append("catatan_perubahan", editorialNote.trim());
       formData.append("file_draft_naskah", editorialFile);
       if (currentRole === "AUTHOR") {
-        formData.append("versi_ke", naskah?.pake_editor_pribadi ? "1" : "2");
+        formData.append("versi_ke", String(nextEditorialVersion));
       }
 
       const response = await fetch(`${API_URL}/naskah/${naskah?.id ?? id}/hasil-editor`, {
@@ -663,8 +666,8 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
       if (editorialFileInputRef.current) editorialFileInputRef.current.value = "";
       setEditorialMessage(currentRole === "AUTHOR"
         ? isPersonalAuthorUpload
-          ? "Naskah editor pribadi berhasil diunggah."
-          : "Versi kedua naskah editorial berhasil diunggah."
+          ? `Naskah editor pribadi versi ${nextEditorialVersion} berhasil diunggah.`
+          : `Versi ${nextEditorialVersion} naskah editorial berhasil diunggah.`
         : "Dokumen editorial berhasil diunggah.");
     } catch (uploadError) {
       setEditorialError(uploadError instanceof Error ? uploadError.message : "Tidak bisa mengunggah dokumen editorial.");
@@ -718,13 +721,22 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const deadlineParts = splitDeadline(deadlineReview);
   const editorialVersions = naskah ? getEditorialVersions(naskah) : [];
   const latestEditorialVersion = editorialVersions[0];
+  const hasEditorialVersion = editorialVersions.length > 0;
+  const nextEditorialVersion = editorialVersions.length > 0
+    ? Math.max(...editorialVersions.map((version) => Number(version.versi_ke ?? 0))) + 1
+    : 1;
   const sessionUserId = getSessionValue("user_id");
   const isAssignedEditor = activeRole === "EDITOR"
     && Boolean(editorAssignment)
     && editorAssignment?.editor_id === Number(sessionUserId);
+  const canAccessEditorial = ["APPROVED_FOR_EDIT", "READY_TO_PRINT"].includes(naskah?.status_saat_ini?.trim().toUpperCase() || "");
   const isPersonalEditorFlow = activeRole === "AUTHOR"
-    && ["APPROVED_FOR_EDIT", "READY_TO_PRINT"].includes(naskah?.status_saat_ini?.trim().toUpperCase() || "")
+    && canAccessEditorial
     && Boolean(naskah ? naskah.pake_editor_pribadi : false);
+  const canShowEditorialCard = isAssignedEditor
+    || hasEditorialVersion
+    || isPersonalEditorFlow
+    || (canAccessEditorial && (activeRole === "EDITOR" || isLppm));
 
   if (loading) {
     return <div className="text-sm" style={{ color: "var(--color-text-muted)" }}>Memuat detail naskah...</div>;
@@ -825,29 +837,6 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
         
       </div>
 
-      <section className="card p-6 mb-5">
-        <div className="mb-5">
-          <h2 className="text-lg font-semibold">Dokumen Naskah</h2>
-          <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
-            Dokumen yang sudah dikirim dan tersimpan di server.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <NaskahDocument
-            label="Draft Naskah"
-            url={getNaskahDocument(naskah, "file_draft_naskah")}
-          />
-          <NaskahDocument
-            label="Profil Penulis"
-            url={getNaskahDocument(naskah, "file_profile_penulis")}
-          />
-          <NaskahDocument
-            label="Surat Keaslian"
-            url={getNaskahDocument(naskah, "file_surat_keaslian")}
-          />
-        </div>
-      </section>
-
       {reviewerAssignment && (
         <div className="card p-6 mb-5">
           <h2 className="text-lg font-semibold">Detail Review</h2>
@@ -873,6 +862,29 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
           </div>
         </div>
       )}
+
+      <section className="card p-6 mb-5">
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold">Dokumen Naskah</h2>
+          <p className="text-sm mt-1" style={{ color: "var(--color-text-muted)" }}>
+            Dokumen yang sudah dikirim dan tersimpan di server.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <NaskahDocument
+            label="Draft Naskah"
+            url={getNaskahDocument(naskah, "file_draft_naskah")}
+          />
+          <NaskahDocument
+            label="Profil Penulis"
+            url={getNaskahDocument(naskah, "file_profile_penulis")}
+          />
+          <NaskahDocument
+            label="Surat Keaslian"
+            url={getNaskahDocument(naskah, "file_surat_keaslian")}
+          />
+        </div>
+      </section>
 
       <div className="space-y-5 mb-5">
           <section className="card p-6">
@@ -938,7 +950,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
           <RevisionHistory versions={getRevisionVersions(naskah)} />
 
-          {(activeRole === "EDITOR" || isLppm || (activeRole === "AUTHOR" && (editorialVersions.length > 0 || isPersonalEditorFlow))) && (
+          {canShowEditorialCard && (
           <section className="card p-6">
             <div className="mb-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -973,10 +985,16 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
                   <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Perubahan Editor</span>
                   <p className="text-sm leading-6">{latestEditorialVersion.catatan_perubahan?.trim() || "Tidak ada catatan perubahan"}</p>
                 </div>
+                {(activeRole === "EDITOR" || naskah.status_saat_ini?.trim().toUpperCase() === "READY_TO_PRINT") && (
+                  <div className="mt-5 pt-4 border-t flex items-center gap-2 text-sm" style={{ borderColor: "var(--color-border)", color: naskah.status_saat_ini?.trim().toUpperCase() === "READY_TO_PRINT" ? "#087f73" : "var(--color-text-muted)" }}>
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full border" style={{ borderColor: "currentColor" }} aria-hidden="true">{naskah.status_saat_ini?.trim().toUpperCase() === "READY_TO_PRINT" ? "✓" : "i"}</span>
+                    <span>{naskah.status_saat_ini?.trim().toUpperCase() === "READY_TO_PRINT" ? "Naskah telah disetujui dan siap cetak." : "Naskah editorial telah dikirim dan menunggu persetujuan penulis."}</span>
+                  </div>
+                )}
               </div>
             )}
 
-            {(isAssignedEditor || (activeRole === "AUTHOR" && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT")) && (
+            {(!latestEditorialVersion || isPersonalEditorFlow || (activeRole === "AUTHOR" && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT")) && (isAssignedEditor || (activeRole === "AUTHOR" && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT")) && (
               <form onSubmit={handleEditorialSubmit} className="space-y-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium mb-1.5" htmlFor="editorial-note">
@@ -1018,7 +1036,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
               </form>
             )}
 
-            {activeRole === "AUTHOR" && !isPersonalEditorFlow && (
+            {activeRole === "AUTHOR" && !isPersonalEditorFlow && latestEditorialVersion && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT" && (
               <>
                 <div className="flex items-center gap-3 my-5" style={{ color: "var(--color-text-muted)" }}>
                   <div className="h-px flex-1" style={{ background: "var(--color-border)" }} />
@@ -1036,32 +1054,8 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
               </>
             )}
 
-            {activeRole !== "EDITOR" && editorialMessage && <p className="text-sm mb-5" style={{ color: "var(--color-success)" }}>{editorialMessage}</p>}
+            {activeRole !== "EDITOR" && editorialMessage && (!latestEditorialVersion || isPersonalEditorFlow) && <p className="text-sm mb-5" style={{ color: "var(--color-success)" }}>{editorialMessage}</p>}
 
-            {!isPersonalEditorFlow && <div className="border-t pt-5" style={{ borderColor: "var(--color-border)" }}>
-              <h3 className="font-semibold mb-4">Riwayat Upload Editorial</h3>
-              {editorialVersions.length ? (
-                <div className="space-y-4">
-                  {editorialVersions.map((version, index) => (
-                    <div key={version.id ?? index} className="rounded-lg border p-4" style={{ borderColor: "var(--color-border)", background: "#fbfcfc" }}>
-                      <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-                        <span className="text-sm font-semibold">Upload Editorial {version.versi_ke ?? editorialVersions.length - index}</span>
-                        <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{formatReviewDate(version.created_at)}</span>
-                      </div>
-                      <div className="pt-3">
-                        <RevisionFile label="File Draft Naskah" value={version.file_draft_naskah} />
-                      </div>
-                      <div className="pt-3">
-                        <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>Catatan Perubahan</span>
-                        <p className="text-sm leading-6">{version.catatan_perubahan?.trim() || "Tidak ada catatan perubahan"}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Belum ada upload editorial.</p>
-              )}
-            </div>}
           </section>
           )}
 
@@ -1174,7 +1168,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
       )}
 
       {showReviewerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-25 sm:pt-40">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowReviewerModal(false)} />
           <div className="relative card p-6 w-full max-w-lg">
             <div className="flex items-center justify-between mb-5">
@@ -1235,7 +1229,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
       )}
 
       {showEditorModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-25 sm:pt-40">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowEditorModal(false)} />
           <div className="relative card p-6 w-full max-w-lg">
             <div className="flex items-center justify-between mb-5">
@@ -1337,9 +1331,26 @@ function RevisionFile({ label, value }: { label: string; value?: string | null }
     <div>
       <span className="block text-xs font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>{label}</span>
       {fileUrl ? (
-        <a href={fileUrl} download={fileName} target="_blank" rel="noreferrer" className="btn-secondary mt-1 w-full justify-center">
-          Unduh {fileName}
-        </a>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3" style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border" style={{ borderColor: "var(--color-border)", color: "var(--color-primary)" }} aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6M8 13h8M8 17h6" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold" title={fileName}>{fileName}</p>
+              <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>Dokumen naskah · {fileName.split(".").pop()?.toUpperCase() || "FILE"}</p>
+            </div>
+          </div>
+          <a href={fileUrl} download={fileName} target="_blank" rel="noreferrer" className="btn-secondary shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
+            </svg>
+            Unduh File
+          </a>
+        </div>
       ) : (
         <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>Dokumen belum tersedia.</span>
       )}
