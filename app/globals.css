@@ -42,8 +42,8 @@ body {
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 @keyframes slideIn {
   from { opacity: 0; transform: translateX(-12px); }
@@ -126,6 +126,33 @@ body {
   transform: scale(0.98);
 }
 .btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.625rem 1.25rem;
+  background: #e8c84a;
+  color: #4f3d00;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  font-family: inherit;
+  text-decoration: none;
+}
+.btn-warning:hover {
+  background: #d8b632;
+}
+.btn-warning:active {
+  transform: scale(0.98);
+}
+.btn-warning:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

@@ -160,6 +160,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
   const [loading, setLoading] = useState(true);
   const [serverError, setServerError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isLppm, setIsLppm] = useState(false);
   const [reviewers, setReviewers] = useState<User[]>([]);
   const [editors, setEditors] = useState<User[]>([]);
@@ -395,7 +396,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
     setAssignmentSuccess("");
 
     if (!naskah || naskah.status_saat_ini?.trim().toUpperCase() !== "APPROVED_FOR_EDIT" || naskah.pake_editor_pribadi) {
-      setAssignmentError("Editor hanya dapat ditunjuk untuk naskah berstatus APPROVED_FOR_EDIT tanpa editor pribadi.");
+      setAssignmentError("Editor hanya dapat ditugaskan untuk naskah berstatus APPROVED_FOR_EDIT tanpa editor pribadi.");
       return;
     }
     if (!isLppm) {
@@ -462,8 +463,6 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
   const handleDelete = async () => {
     if (!naskah) return;
-    const ok = confirm(`Hapus naskah \"${naskah.judul_naskah}\"? Tindakan ini tidak dapat dibatalkan.`);
-    if (!ok) return;
 
     setDeleting(true);
     try {
@@ -473,12 +472,14 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
       if (!res.ok) {
         setServerError("Gagal menghapus naskah.");
+        setShowDeleteModal(false);
         return;
       }
 
       router.push("/dashboard/naskah");
     } catch {
       setServerError("Tidak bisa terhubung ke server.");
+      setShowDeleteModal(false);
     } finally {
       setDeleting(false);
     }
@@ -639,10 +640,6 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
       formData.append("uploaded_by", uploadedBy);
       formData.append("catatan_perubahan", editorialNote.trim());
       formData.append("file_draft_naskah", editorialFile);
-      if (currentRole === "AUTHOR") {
-        formData.append("versi_ke", String(nextEditorialVersion));
-      }
-
       const response = await fetch(`${API_URL}/naskah/${naskah?.id ?? id}/hasil-editor`, {
         method: "POST",
         body: formData,
@@ -731,7 +728,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
     && editorAssignment?.editor_id === Number(sessionUserId);
   const canAccessEditorial = ["APPROVED_FOR_EDIT", "READY_TO_PRINT"].includes(naskah?.status_saat_ini?.trim().toUpperCase() || "");
   const isPersonalEditorFlow = activeRole === "AUTHOR"
-    && canAccessEditorial
+    && naskah?.status_saat_ini?.trim().toUpperCase() === "APPROVED_FOR_EDIT"
     && Boolean(naskah ? naskah.pake_editor_pribadi : false);
   const canShowEditorialCard = isAssignedEditor
     || hasEditorialVersion
@@ -753,7 +750,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="max-w-5xl">
-      <div className="flex items-center gap-2 text-sm mb-6" style={{ color: "var(--color-text-muted)" }}>
+      <div className="flex items-center gap-2 text-sm mb-9" style={{ color: "var(--color-text-muted)" }}>
         <Link href="/dashboard/naskah" style={{ color: "var(--color-primary)" }}>Pengajuan Naskah</Link>
         <span>›</span>
         <span>{naskah.judul_naskah}</span>
@@ -793,7 +790,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
               </button>
             )}
             {canEdit && <Link href={`/dashboard/naskah/${naskah.id}/edit`} className="btn-edit">Edit</Link>}
-            {canDelete && <button onClick={handleDelete} className="btn-danger" disabled={deleting}>
+            {canDelete && <button onClick={() => setShowDeleteModal(true)} className="btn-danger" disabled={deleting}>
               {deleting ? "Menghapus..." : "Hapus"}
             </button>}
           </div>
@@ -972,10 +969,10 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
               </a>
             )}
 
-            {!isPersonalEditorFlow && latestEditorialVersion && (
+            {latestEditorialVersion && (
               <div className="rounded-lg border p-4 mb-5" style={{ borderColor: "var(--color-border)", background: "#fbfcfc" }}>
                 <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-                  <span className="text-sm font-semibold">{isPersonalEditorFlow ? "Naskah Editor Pribadi Terbaru" : "Hasil Layout Editorial Terbaru"}</span>
+                  <span className="text-sm font-semibold">{activeRole === "AUTHOR" && naskah.pake_editor_pribadi ? "Naskah Editor Pribadi Terbaru" : "Hasil Layout Editorial Terbaru"}</span>
                   <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{formatReviewDate(latestEditorialVersion.created_at)}</span>
                 </div>
                 <div className="pt-3">
@@ -995,7 +992,7 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
             )}
 
             {(!latestEditorialVersion || isPersonalEditorFlow || (activeRole === "AUTHOR" && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT")) && (isAssignedEditor || (activeRole === "AUTHOR" && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT")) && (
-              <form onSubmit={handleEditorialSubmit} className="space-y-4 mb-6">
+              <form onSubmit={handleEditorialSubmit} className="space-y-4 mb-7">
                 <div>
                   <label className="block text-sm font-medium mb-1.5" htmlFor="editorial-note">
                     Catatan Perubahan
@@ -1029,21 +1026,26 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
                 {editorialError && <p className="text-sm" style={{ color: "var(--color-danger)" }}>{editorialError}</p>}
                 {editorialMessage && <p className="text-sm" style={{ color: "var(--color-success)" }}>{editorialMessage}</p>}
                 <div className="flex justify-end">
-                  <button type="submit" className="btn-primary" disabled={uploadingEditorial}>
+                  <button
+                    type="submit"
+                    className={activeRole === "AUTHOR" && !(isPersonalEditorFlow && !latestEditorialVersion) ? "btn-warning" : "btn-primary"}
+                    style={activeRole === "AUTHOR" && !(isPersonalEditorFlow && !latestEditorialVersion) ? { background: "#e8c84a", color: "#4f3d00" } : undefined}
+                    disabled={uploadingEditorial}
+                  >
                     {uploadingEditorial ? "Mengunggah..." : isPersonalEditorFlow ? "Upload Naskah Editor Pribadi" : activeRole === "AUTHOR" ? "Upload Versi Kedua" : "Unggah Dokumen Editorial"}
                   </button>
                 </div>
               </form>
             )}
 
-            {activeRole === "AUTHOR" && !isPersonalEditorFlow && latestEditorialVersion && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT" && (
+            {activeRole === "AUTHOR" && latestEditorialVersion && naskah.status_saat_ini?.trim().toUpperCase() !== "READY_TO_PRINT" && (
               <>
-                <div className="flex items-center gap-3 my-5" style={{ color: "var(--color-text-muted)" }}>
-                  <div className="h-px flex-1" style={{ background: "var(--color-border)" }} />
+                <div className="editorial-approval-separator" style={{ color: "var(--color-text-muted)", transform: "translateY(-12px)" }}>
+                  <div className="h-px w-8" style={{ background: "var(--color-border)" }} />
                   <span className="text-sm font-medium">atau</span>
-                  <div className="h-px flex-1" style={{ background: "var(--color-border)" }} />
+                  <div className="h-px w-8" style={{ background: "var(--color-border)" }} />
                 </div>
-                <div className="flex flex-col items-start gap-2">
+                <div className="editorial-approval-action">
                   <button type="button" className="btn-primary" onClick={handleApproveEditorial} disabled={approvingEditorial || naskah.status_saat_ini?.trim().toUpperCase() === "READY_TO_PRINT"}>
                     {approvingEditorial ? "Menyetujui..." : "Approve Naskah Editorial"}
                   </button>
@@ -1279,6 +1281,30 @@ export default function DetailNaskahPage({ params }: { params: Promise<{ id: str
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !deleting && setShowDeleteModal(false)} />
+          <div className="relative card p-6 w-full max-w-sm animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="delete-naskah-title">
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "var(--color-danger-pale)" }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-danger)" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+              </svg>
+            </div>
+            <h3 id="delete-naskah-title" className="text-center font-semibold text-lg mb-2">Hapus Naskah?</h3>
+            <p className="text-center text-sm mb-6" style={{ color: "var(--color-text-muted)" }}>
+              Naskah <strong>{naskah.judul_naskah}</strong> akan dihapus permanen.
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setShowDeleteModal(false)} className="btn-secondary flex-1 justify-center" disabled={deleting}>Batal</button>
+              <button type="button" onClick={handleDelete} className="flex-1 justify-center btn-primary" style={{ background: "var(--color-danger)" }} disabled={deleting}>
+                {deleting ? "Menghapus..." : "Ya, Hapus"}
+              </button>
+            </div>
           </div>
         </div>
       )}

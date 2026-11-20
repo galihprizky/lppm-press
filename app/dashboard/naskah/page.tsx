@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { ApiListResponse, canEditNaskah, canManageNaskah, formatStatusLabel, getStatusColors, Naskah, JENIS_BUKU_OPTIONS, STATUS_SAAT_INI_OPTIONS } from "@/app/dashboard/naskah/types";
 import { API_URL } from "@/lib/config";
@@ -386,8 +387,8 @@ export default function NaskahPage() {
         )}
       </div>
 
-      {deleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {deleteModal && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteModal(null)} />
           <div className="relative card p-6 w-full max-w-sm animate-fade-in">
             <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "var(--color-danger-pale)" }}>
@@ -408,7 +409,7 @@ export default function NaskahPage() {
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }
